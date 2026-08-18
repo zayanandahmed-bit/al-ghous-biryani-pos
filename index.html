@@ -1503,6 +1503,25 @@
     });
   }
 
+  // Voids a single sale instantly — used by the "Delete" button in Sales
+  // History. Unlike a refund, nothing is left behind: the sale, its lines,
+  // and any refunds already logged against it are all removed server-side.
+  function deleteSaleInstant(saleId){
+    if(!cloudReady()) return Promise.resolve();
+    setCloudStatus("syncing");
+    return fetch(supabaseUrl("sync_delete_sale_agb"), {
+      method: "POST",
+      headers: supabaseHeaders(),
+      body: JSON.stringify({ p_sale_id: saleId })
+    }).then(function(r){
+      if(!r.ok) return r.text().then(function(t){ throw new Error(t || ("HTTP " + r.status)); });
+      setCloudStatus("synced");
+    }).catch(function(err){
+      setCloudStatus("error", err.message || "offline or unreachable");
+      throw err;
+    });
+  }
+
   // Wipes the sales table instantly — used by "Clear all sales history",
   // which is a deliberate one-off admin action, not a per-checkout event.
   function clearSalesInstant(){
@@ -4610,7 +4629,8 @@
         "<td>" + sale.payment + "</td>" +
         "<td>" + statusBadge + "</td>" +
         '<td><button class="btn secondary small" onclick="POS.viewReceipt(\''+sale.id+'\')">' + t("receipt", "Receipt") + '</button> ' +
-        (refundStatus === "full" ? "" : '<button class="btn danger small" onclick="POS.openRefundModal(\''+sale.id+'\')">' + t("refund", "Refund") + '</button>') +
+        (refundStatus === "full" ? "" : '<button class="btn danger small" onclick="POS.openRefundModal(\''+sale.id+'\')">' + t("refund", "Refund") + '</button> ') +
+        '<button class="btn danger small" onclick="POS.deleteSale(\''+sale.id+'\')">' + t("delete", "Delete") + '</button>' +
         "</td>" +
       "</tr>";
     }).join("");
@@ -4745,6 +4765,37 @@
 
     document.getElementById("receiptContent").innerHTML = html;
     document.getElementById("receiptModal").classList.add("show");
+  }
+
+  // Voids a sale entirely — unlike Refund (which keeps the sale on record
+  // and marks it refunded), this removes the sale from history completely,
+  // restocks every item it sold, and pulls revenue back out of the totals.
+  function deleteSale(saleId){
+    var sale = state.sales.find(function(s){ return s.id === saleId; });
+    if(!sale) return;
+    if(!confirm('Delete sale #' + sale.receiptNo + ' (' + money(sale.grand) + ')? This removes it from history entirely, restocks its items, and cannot be undone.')) return;
+
+    sale.lines.forEach(function(l){
+      var item = l.itemId ? state.items.find(function(it){ return it.id === l.itemId; }) : null;
+      if(!item) item = state.items.find(function(it){ return it.name === l.name; });
+      if(item) item.stock = (item.stock || 0) + l.qty;
+    });
+    saveItems();
+
+    state.sales = state.sales.filter(function(s){ return s.id !== saleId; });
+    state.refunds = state.refunds.filter(function(r){ return r.saleId !== saleId; });
+    saveSales();
+    saveRefunds();
+    renderInventory();
+
+    deleteSaleInstant(saleId).then(function(){
+      toast("Sale deleted and stock restored.");
+      loadSalesHistoryPage();
+      loadDashboardRange();
+    }).catch(function(err){
+      toast("Deleted locally, but the cloud database wasn't reached: " + err.message);
+      renderSales();
+    });
   }
 
   document.getElementById("clearHistoryBtn").addEventListener("click", function(){
@@ -5700,6 +5751,7 @@
     resumeHeldSale: resumeHeldSale,
     deleteHeldSale: deleteHeldSale,
     openRefundModal: openRefundModal,
+    deleteSale: deleteSale,
     updateRefundTotal: updateRefundTotal,
     openLabelModal: openLabelModal,
     showShiftReport: showShiftReport,

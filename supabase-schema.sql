@@ -897,6 +897,31 @@ begin
 end;
 $$;
 
+-- ============== sync_delete_sale_agb: void a single sale ==============
+-- Deletes one sale entirely (not a refund — no trace stays behind). Row-by-row
+-- DELETE (not truncate) so the existing trg_sale_lines_totals_agb/
+-- trg_sales_totals_agb triggers fire and correctly decrement
+-- item_sales_totals_agb/sales_overall_totals_agb — Dashboard/Sales History
+-- totals stay accurate without any extra bookkeeping here. Any refunds
+-- already logged against this sale are cascade-deleted too, since a refund
+-- record referencing a sale that no longer exists is meaningless. Restocking
+-- inventory for the voided items is handled by the app itself, the same way
+-- a refund does it, since that's app-level business logic, not storage.
+
+create or replace function sync_delete_sale_agb(p_sale_id text)
+returns void
+language plpgsql
+security definer
+set search_path = public
+as $$
+begin
+  delete from refund_lines_agb where refund_id in (select id from refunds_agb where sale_id = p_sale_id);
+  delete from refunds_agb where sale_id = p_sale_id;
+  delete from sale_lines_agb where sale_id = p_sale_id;
+  delete from sales_agb where id = p_sale_id;
+end;
+$$;
+
 -- ============== per-domain instant replace functions ==============
 -- Every button that adds/edits/deletes items_agb, categories_agb, suppliers_agb,
 -- purchases_agb, cashiers_agb, held sales_agb, shifts_agb, or settings_agb calls one of these
@@ -1165,6 +1190,7 @@ grant execute on function sync_append_sale_agb(jsonb, integer) to anon;
 grant execute on function sync_append_sales_batch_agb(jsonb) to anon;
 grant execute on function sync_append_refund_agb(jsonb) to anon;
 grant execute on function sync_clear_sales_agb() to anon;
+grant execute on function sync_delete_sale_agb(text) to anon;
 grant execute on function sync_replace_items_agb(jsonb) to anon;
 grant execute on function sync_replace_item_catalog_agb(jsonb) to anon;
 grant execute on function sync_replace_categories_agb(jsonb) to anon;
