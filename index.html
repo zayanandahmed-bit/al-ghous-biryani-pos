@@ -4444,11 +4444,14 @@
     var purchasesInRange = state.purchases.filter(function(p){ return finRangeFilter(p.date); });
     var purchasesTotal = purchasesInRange.reduce(function(s,p){ return s + (p.total||0); }, 0);
 
-    var expensesInRange = state.expenses.filter(function(e){ return finRangeFilter(e.date); })
+    // Filtered by PERIOD (the month the expense/salary is FOR), not the date
+    // it was physically paid — an expense/salary can be paid early or late
+    // without shifting which month's Money Out it counts toward.
+    var expensesInRange = state.expenses.filter(function(e){ return finRangeFilter(e.period || e.date); })
       .sort(function(a,b){ return new Date(b.date) - new Date(a.date); });
     var expensesTotal = expensesInRange.reduce(function(s,e){ return s + (e.amount||0); }, 0);
 
-    var salaryPaymentsInRange = state.employeePayments.filter(function(p){ return finRangeFilter(p.date); });
+    var salaryPaymentsInRange = state.employeePayments.filter(function(p){ return finRangeFilter(p.period || p.date); });
     var salariesTotal = salaryPaymentsInRange.reduce(function(s,p){ return s + (p.amount||0); }, 0);
 
     var moneyOut = purchasesTotal + expensesTotal + salariesTotal;
