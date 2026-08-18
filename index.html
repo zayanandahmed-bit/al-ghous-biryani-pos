@@ -753,7 +753,7 @@
           <div class="value" id="finNet">Rs 0</div>
         </div>
       </div>
-      <p class="hint" style="margin-top:8px;"><span data-i18n="moneyOutBreaksDown">Money Out breaks down as: Stock Purchases</span> <span id="finPurchasesOut">Rs 0</span> + <span data-i18n="otherExpenses">Other Expenses</span> <span id="finExpensesOut">Rs 0</span>.</p>
+      <p class="hint" style="margin-top:8px;"><span data-i18n="moneyOutBreaksDown">Money Out breaks down as: Stock Purchases</span> <span id="finPurchasesOut">Rs 0</span> + <span data-i18n="otherExpenses">Other Expenses</span> <span id="finExpensesOut">Rs 0</span> + <span data-i18n="salariesLabel">Salaries</span> <span id="finSalariesOut">Rs 0</span>.</p>
     </div>
 
     <div class="panel">
@@ -1865,7 +1865,7 @@
     salesHistory: "فروخت کی تاریخ", clearHistory: "تاریخ صاف کریں", searchByReceiptCustomer: "رسید نمبر یا گاہک سے تلاش کریں...",
     cashier2: "کیشیئر", payment: "ادائیگی",
     moneyInVsOut: "آمدنی بمقابلہ اخراجات", moneyInSalesRevenue: "آمدنی (فروخت)", moneyOutPurchasesExpenses: "اخراجات (خریداری + دیگر)",
-    netProfitLoss: "خالص منافع / نقصان", moneyOutBreaksDown: "اخراجات کی تفصیل: اسٹاک خریداری", otherExpenses: "دیگر اخراجات",
+    netProfitLoss: "خالص منافع / نقصان", moneyOutBreaksDown: "اخراجات کی تفصیل: اسٹاک خریداری", otherExpenses: "دیگر اخراجات", salariesLabel: "تنخواہیں",
     logExpense: "خرچہ درج کریں", logExpenseHint: "کرایہ، بجلی، تنخواہیں، اور دیگر اخراجات کے لیے جو اسٹاک خریداری نہیں ہیں۔",
     monthPeriodRequired: "مہینہ (یہ کس مدت کے لیے ہے) *", datePaidRequired: "ادائیگی کی تاریخ *", amountRequired: "رقم *",
     rent: "کرایہ", utilities: "بجلی/پانی", salaries: "تنخواہیں", transport: "آمد و رفت", maintenance: "مرمت",
@@ -3136,6 +3136,7 @@
     saveEmployees();
     saveEmployeePayments();
     renderEmployees();
+    renderFinancials();
     toast("Employee deleted.");
   }
 
@@ -3169,6 +3170,7 @@
     state.employeePayments.push(payment);
     saveEmployeePayments();
     renderEmployees();
+    renderFinancials();
     document.getElementById("employeePaymentModal").classList.remove("show");
     showEmployeePaymentReceipt(payment, e);
     toast("Payment logged.");
@@ -3179,6 +3181,7 @@
     state.employeePayments = state.employeePayments.filter(function(p){ return p.id !== id; });
     saveEmployeePayments();
     renderEmployees();
+    renderFinancials();
   }
 
   // Grouped by period (month) — same layout as the Financials expense list,
@@ -4301,14 +4304,21 @@
     loadSalesHistoryPage();
   }
 
+  // Guards against a slow older request resolving AFTER a newer one (e.g.
+  // clicking two range tabs quickly) and clobbering the fresher result —
+  // only the response matching the most recently issued request is applied.
+  var salesHistoryRequestToken = 0;
+
   function loadSalesHistoryPage(){
     var body = document.getElementById("salesBody");
     if(body) body.innerHTML = '<tr><td colspan="9">Loading…</td></tr>';
     var cursor = salesPageCurrentCursor;
+    var thisToken = ++salesHistoryRequestToken;
     fetchSalesRangeByLabel(
       currentDateRange, document.getElementById("customFrom").value, document.getElementById("customTo").value,
       SALES_PAGE_SIZE, cursor ? cursor.date : null, cursor ? cursor.id : null
     ).then(function(data){
+      if(thisToken !== salesHistoryRequestToken) return; // a newer request has since been issued — drop this stale one
       state.sales = (data.sales||[]).map(function(s){ (s.lines||[]).forEach(function(l){ l.barcode = str(l.barcode); }); return s; });
       state.refunds = data.refunds || [];
       state.rangeMeta = { totalCount: data.totalCount||0, totalRevenue: data.totalRevenue||0, topItems: data.topItems||[] };
@@ -4318,7 +4328,7 @@
       document.getElementById("salesPageLabel").textContent = "Page " + salesPageNumber + " of " + totalPages;
       document.getElementById("salesPrevPageBtn").disabled = salesPageCursorStack.length === 0;
       document.getElementById("salesNextPageBtn").disabled = !salesPageHasMore;
-    }).catch(function(err){ toast("Couldn't load that range: " + err.message); });
+    }).catch(function(err){ if(thisToken === salesHistoryRequestToken) toast("Couldn't load that range: " + err.message); });
   }
 
   document.getElementById("salesNextPageBtn").addEventListener("click", function(){
@@ -4349,16 +4359,19 @@
   document.getElementById("salesSearch").addEventListener("input", renderSales);
 
   var dashDateRange = "week";
+  var dashboardRequestToken = 0;
 
   function loadDashboardRange(){
+    var thisToken = ++dashboardRequestToken;
     fetchSalesRangeByLabel(dashDateRange, document.getElementById("dashCustomFrom").value, document.getElementById("dashCustomTo").value, 50)
       .then(function(data){
+        if(thisToken !== dashboardRequestToken) return; // a newer request has since been issued — drop this stale one
         state.sales = (data.sales||[]).map(function(s){ (s.lines||[]).forEach(function(l){ l.barcode = str(l.barcode); }); return s; });
         state.refunds = data.refunds || [];
         state.rangeMeta = { totalCount: data.totalCount||0, totalRevenue: data.totalRevenue||0, topItems: data.topItems||[] };
         renderDashboard();
       })
-      .catch(function(err){ toast("Couldn't load that range: " + err.message); });
+      .catch(function(err){ if(thisToken === dashboardRequestToken) toast("Couldn't load that range: " + err.message); });
   }
 
   document.querySelectorAll(".dash-date-tab").forEach(function(btn){
@@ -4415,7 +4428,10 @@
       .sort(function(a,b){ return new Date(b.date) - new Date(a.date); });
     var expensesTotal = expensesInRange.reduce(function(s,e){ return s + (e.amount||0); }, 0);
 
-    var moneyOut = purchasesTotal + expensesTotal;
+    var salaryPaymentsInRange = state.employeePayments.filter(function(p){ return finRangeFilter(p.date); });
+    var salariesTotal = salaryPaymentsInRange.reduce(function(s,p){ return s + (p.amount||0); }, 0);
+
+    var moneyOut = purchasesTotal + expensesTotal + salariesTotal;
     var net = finMoneyIn - moneyOut;
 
     document.getElementById("finMoneyIn").textContent = money(finMoneyIn);
@@ -4424,6 +4440,7 @@
     document.getElementById("finNetCard").style.borderColor = net >= 0 ? "var(--green)" : "var(--red)";
     document.getElementById("finPurchasesOut").textContent = money(purchasesTotal);
     document.getElementById("finExpensesOut").textContent = money(expensesTotal);
+    document.getElementById("finSalariesOut").textContent = money(salariesTotal);
 
     var groupsEl = document.getElementById("expenseGroups");
     var empty = document.getElementById("expenseEmpty");
