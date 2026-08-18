@@ -828,6 +828,7 @@ $$;
 -- Supabase's statement timeout — this function itself has no size limit,
 -- the timeout is on how much work fits in one call.
 
+drop function if exists sync_append_sales_batch_agb(jsonb);
 create or replace function sync_append_sales_batch_agb(sales jsonb)
 returns void
 language plpgsql
@@ -902,6 +903,7 @@ $$;
 -- immediately — each only touches its own table, so editing inventory never
 -- has to resend sales_agb history (and vice versa).
 
+drop function if exists sync_replace_items_agb(jsonb);
 create or replace function sync_replace_items_agb(items jsonb)
 returns void
 language plpgsql
@@ -934,6 +936,7 @@ begin
 end;
 $$;
 
+drop function if exists sync_replace_categories_agb(jsonb);
 create or replace function sync_replace_categories_agb(categories jsonb)
 returns void
 language plpgsql
@@ -947,6 +950,7 @@ begin
 end;
 $$;
 
+drop function if exists sync_replace_suppliers_agb(jsonb);
 create or replace function sync_replace_suppliers_agb(suppliers jsonb)
 returns void
 language plpgsql
@@ -961,6 +965,7 @@ begin
 end;
 $$;
 
+drop function if exists sync_replace_cashiers_agb(jsonb);
 create or replace function sync_replace_cashiers_agb(cashiers jsonb)
 returns void
 language plpgsql
@@ -975,6 +980,7 @@ begin
 end;
 $$;
 
+drop function if exists sync_replace_purchases_agb(jsonb);
 create or replace function sync_replace_purchases_agb(purchases jsonb)
 returns void
 language plpgsql
@@ -993,6 +999,7 @@ begin
 end;
 $$;
 
+drop function if exists sync_replace_expenses_agb(jsonb);
 create or replace function sync_replace_expenses_agb(expenses jsonb)
 returns void
 language plpgsql
@@ -1008,6 +1015,7 @@ begin
 end;
 $$;
 
+drop function if exists sync_replace_customers_agb(jsonb);
 create or replace function sync_replace_customers_agb(customers jsonb)
 returns void
 language plpgsql
@@ -1037,6 +1045,7 @@ begin
 end;
 $$;
 
+drop function if exists sync_replace_employees_agb(jsonb);
 create or replace function sync_replace_employees_agb(employees jsonb)
 returns void
 language plpgsql
@@ -1068,6 +1077,7 @@ begin
 end;
 $$;
 
+drop function if exists sync_replace_held_sales_agb(jsonb);
 create or replace function sync_replace_held_sales_agb("heldSales" jsonb)
 returns void
 language plpgsql
@@ -1088,6 +1098,7 @@ begin
 end;
 $$;
 
+drop function if exists sync_replace_shifts_agb(jsonb);
 create or replace function sync_replace_shifts_agb(shifts jsonb)
 returns void
 language plpgsql
@@ -1105,6 +1116,7 @@ begin
 end;
 $$;
 
+drop function if exists sync_replace_active_shift_agb(jsonb);
 create or replace function sync_replace_active_shift_agb("activeShift" jsonb)
 returns void
 language plpgsql
@@ -1126,6 +1138,7 @@ begin
 end;
 $$;
 
+drop function if exists sync_replace_settings_agb(jsonb);
 create or replace function sync_replace_settings_agb(settings jsonb)
 returns void
 language plpgsql
