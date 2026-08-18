@@ -792,6 +792,30 @@
       <div id="expenseGroups"></div>
       <div id="expenseEmpty" class="empty" style="display:none;" data-i18n="noExpensesRange">No expenses logged in this range.</div>
     </div>
+
+    <div class="panel">
+      <div class="flex-between">
+        <h2 data-i18n="purchasesThisRange">Purchases (this range)</h2>
+        <span id="finPurchasesSummary" style="font-size:13px;color:var(--muted);"></span>
+      </div>
+      <table>
+        <thead><tr><th data-i18n="date">Date</th><th data-i18n="supplier">Supplier</th><th data-i18n="item">Item</th><th data-i18n="qty">Qty</th><th data-i18n="costPerUnit">Cost/Unit</th><th data-i18n="total">Total</th></tr></thead>
+        <tbody id="finPurchasesBody"></tbody>
+      </table>
+      <div id="finPurchasesEmpty" class="empty" style="display:none;" data-i18n="noPurchasesRange">No purchases in this range.</div>
+    </div>
+
+    <div class="panel">
+      <div class="flex-between">
+        <h2 data-i18n="salariesThisRange">Salaries (this range)</h2>
+        <span id="finSalariesSummary" style="font-size:13px;color:var(--muted);"></span>
+      </div>
+      <table>
+        <thead><tr><th data-i18n="datePaid">Date Paid</th><th data-i18n="employee">Employee</th><th data-i18n="monthPeriod">Month</th><th data-i18n="amount">Amount</th></tr></thead>
+        <tbody id="finSalariesBody"></tbody>
+      </table>
+      <div id="finSalariesEmpty" class="empty" style="display:none;" data-i18n="noSalariesRange">No salary payments in this range.</div>
+    </div>
   </div>
 
   <!-- SETTINGS VIEW -->
@@ -1881,6 +1905,9 @@
     active: "فعال", inactive: "غیر فعال", searchByNamePhoneRole: "نام، فون، یا عہدے سے تلاش کریں...",
     noEmployeesYet: "ابھی تک کوئی ملازم نہیں — اوپر پہلا ملازم شامل کریں۔",
     salaryPayments: "تنخواہ کی ادائیگیاں", noPaymentsYet: "ابھی تک کوئی تنخواہ ادا نہیں ہوئی۔",
+    purchasesThisRange: "خریداری (اس مدت میں)", noPurchasesRange: "اس مدت میں کوئی خریداری نہیں۔",
+    salariesThisRange: "تنخواہیں (اس مدت میں)", noSalariesRange: "اس مدت میں کوئی تنخواہ ادا نہیں ہوئی۔",
+    datePaid: "ادائیگی کی تاریخ", employee: "ملازم", monthPeriod: "مہینہ", amount: "رقم",
     salesHistory: "فروخت کی تاریخ", clearHistory: "تاریخ صاف کریں", searchByReceiptCustomer: "رسید نمبر یا گاہک سے تلاش کریں...",
     cashier2: "کیشیئر", payment: "ادائیگی",
     moneyInVsOut: "آمدنی بمقابلہ اخراجات", moneyInSalesRevenue: "آمدنی (فروخت)", moneyOutPurchasesExpenses: "اخراجات (خریداری + دیگر)",
@@ -4503,6 +4530,32 @@
           '<tbody>' + rowsHtml + '</tbody>' +
         '</table>' +
       '</div>';
+    }).join("");
+
+    var purchasesSorted = purchasesInRange.slice().sort(function(a,b){ return new Date(b.date) - new Date(a.date); });
+    document.getElementById("finPurchasesEmpty").style.display = purchasesSorted.length === 0 ? "block" : "none";
+    document.getElementById("finPurchasesSummary").textContent = purchasesSorted.length + " purchase(s) · Total: " + money(purchasesTotal);
+    document.getElementById("finPurchasesBody").innerHTML = purchasesSorted.map(function(p){
+      return "<tr>" +
+        "<td>" + (p.date||"—") + "</td>" +
+        "<td>" + escapeHtml(p.supplierName||"—") + "</td>" +
+        "<td>" + escapeHtml(p.itemName||"—") + "</td>" +
+        "<td>" + p.qty + "</td>" +
+        "<td>" + money(p.cost) + "</td>" +
+        "<td>" + money(p.total) + "</td>" +
+      "</tr>";
+    }).join("");
+
+    var salariesSorted = salaryPaymentsInRange.slice().sort(function(a,b){ return new Date(b.date) - new Date(a.date); });
+    document.getElementById("finSalariesEmpty").style.display = salariesSorted.length === 0 ? "block" : "none";
+    document.getElementById("finSalariesSummary").textContent = salariesSorted.length + " payment(s) · Total: " + money(salariesTotal);
+    document.getElementById("finSalariesBody").innerHTML = salariesSorted.map(function(p){
+      return "<tr>" +
+        "<td>" + (p.date||"—") + "</td>" +
+        "<td>" + escapeHtml(p.employeeName||"—") + "</td>" +
+        "<td>" + formatPeriodLabel(p.period) + "</td>" +
+        "<td>" + money(p.amount) + "</td>" +
+      "</tr>";
     }).join("");
   }
 
