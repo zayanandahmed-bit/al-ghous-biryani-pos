@@ -1609,9 +1609,16 @@
     var target = normalizePakPhone(sale.phone);
     if(!target) return;
 
-    var text = "🙏 *Payment Received* — " + (state.settings.storeName || "AL GHOUS BIRYANI") + "\n\n" +
-      "Thank you " + (sale.customer || "there") + "! We've received your payment of *" + money(sale.grand) + "* (" + sale.payment + ").\n\n" +
-      "We hope you enjoy your meal — thanks for ordering with us! 🍛";
+    var itemLines = (sale.lines || []).map(function(l){
+      return "• " + l.qty + "x " + l.name + " (" + money(l.price) + " per piece) — " + money(l.subtotal);
+    }).join("\n");
+
+    var text = "🎉 *Payment Received* — " + (state.settings.storeName || "AL GHOUS BIRYANI") + "\n\n" +
+      "Thank you " + (sale.customer || "there") + "! Here's your order summary:\n\n" +
+      itemLines + "\n\n" +
+      "Total Paid: *" + money(sale.grand) + "*\n" +
+      "Payment Method: " + sale.payment + "\n\n" +
+      "Enjoy your meal — thanks for choosing us! 🍛✨";
 
     fetch(WHATSAPP_API_URL + "/message/sendText/" + encodeURIComponent(WHATSAPP_INSTANCE), {
       method: "POST",
