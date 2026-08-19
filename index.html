@@ -477,6 +477,30 @@
             <input type="date" id="itemExpiry" title="For perishables — shows up in the Dashboard's Near Expiry alert.">
           </div>
         </div>
+        <div style="margin-top:12px;">
+          <button type="button" class="btn secondary small" id="toggleBatchCalcBtn" data-i18n="batchCostCalculator">🧮 Batch Cost Calculator</button>
+        </div>
+        <div id="batchCalcBox" style="display:none;margin-top:10px;padding:12px;border:1px solid var(--border);border-radius:8px;background:var(--panel-alt,rgba(0,0,0,0.02));">
+          <p class="hint" style="margin-top:0;" data-i18n="batchCalcHint">Enter what you paid for the whole batch and how many units it makes — this works out cost per unit and a suggested selling price, without touching stock.</p>
+          <div class="grid grid-3">
+            <div>
+              <label data-i18n="totalBatchCost">Total Batch Cost</label>
+              <input type="number" id="bcTotalCost" step="0.01" min="0" placeholder="0.00">
+            </div>
+            <div>
+              <label data-i18n="unitsProduced">Units Produced</label>
+              <input type="number" id="bcYield" step="1" min="1" placeholder="e.g. 60">
+            </div>
+            <div>
+              <label data-i18n="targetMarginPct">Target Margin (%)</label>
+              <input type="number" id="bcMargin" step="1" min="0" max="95" value="40">
+            </div>
+          </div>
+          <div id="bcResult" style="margin-top:10px;font-size:13px;"></div>
+          <div class="row" style="margin-top:10px;">
+            <button type="button" class="btn small" id="bcApplyBtn" data-i18n="applyToCostPrice">Apply to Cost &amp; Price above</button>
+          </div>
+        </div>
         <div class="row" style="margin-top:12px;align-items:center;">
           <label style="display:flex;align-items:center;gap:6px;font-weight:normal;">
             <input type="checkbox" id="itemQuickPick" style="width:auto;">
@@ -2003,6 +2027,10 @@
   var I18N_UR = {
     urduToggle: "اردو / Urdu", localDataNote: "تمام ڈیٹا اس براؤزر میں محفوظ ہے۔",
     quickPick: "فوری انتخاب", quickPickCheckbox: "بلنگ میں فوری انتخاب کے بٹن کے طور پر دکھائیں",
+    batchCostCalculator: "🧮 بیچ لاگت کیلکولیٹر",
+    batchCalcHint: "پورے بیچ کی قیمت اور اس سے بننے والی مقدار درج کریں — یہ فی یونٹ لاگت اور تجویز کردہ قیمت نکالے گا، اسٹاک کو چھوئے بغیر۔",
+    totalBatchCost: "کل بیچ لاگت", unitsProduced: "پیدا شدہ یونٹس", targetMarginPct: "مطلوبہ منافع (%)",
+    applyToCostPrice: "اوپر لاگت اور قیمت میں لاگو کریں",
     quickPickOn: "فوری انتخاب: آن", quickPickOff: "فوری انتخاب: آف", left: "باقی",
     whatsappDelivery: "واٹس ایپ / ڈیلیوری", phoneOptional: "فون (اختیاری)", addressNotes: "پتہ / نوٹس",
     phoneAutofillHint: "پہچانے گئے نمبر پر گاہک کا نام خودکار طور پر بھر جائے گا۔",
@@ -2339,6 +2367,57 @@
     savePurchases();
   }
 
+  // ================= BATCH COST CALCULATOR =================
+  // "I paid X for the batch, it makes Y units" -> cost per unit + a
+  // suggested price for a target margin. Pure arithmetic against these
+  // three fields, applies straight into Buying Price / Price above.
+  document.getElementById("toggleBatchCalcBtn").addEventListener("click", function(){
+    var box = document.getElementById("batchCalcBox");
+    var showing = box.style.display !== "none";
+    box.style.display = showing ? "none" : "block";
+    if(!showing) updateBatchCalc();
+  });
+
+  function updateBatchCalc(){
+    var totalCost = parseFloat(document.getElementById("bcTotalCost").value);
+    var yieldQty = parseFloat(document.getElementById("bcYield").value);
+    var marginPct = parseFloat(document.getElementById("bcMargin").value);
+    var resultEl = document.getElementById("bcResult");
+
+    if(isNaN(totalCost) || isNaN(yieldQty) || yieldQty <= 0){
+      resultEl.innerHTML = '<span style="color:var(--muted);">' + t("bcEnterCostYield", "Enter the batch cost and units produced.") + '</span>';
+      return;
+    }
+    var costPerUnit = totalCost / yieldQty;
+    if(isNaN(marginPct) || marginPct < 0 || marginPct >= 100){
+      resultEl.innerHTML = '<span style="color:var(--muted);">' + t("bcCostPerUnitOnly", "Cost per unit") + ': <b>' + money(costPerUnit) + '</b> — ' + t("bcEnterValidMargin", "enter a margin between 0-95% for a suggested price.") + '</span>';
+      return;
+    }
+    var suggestedPrice = costPerUnit / (1 - marginPct/100);
+    var profitPerUnit = suggestedPrice - costPerUnit;
+    resultEl.innerHTML =
+      '<div>' + t("bcCostPerUnit", "Cost per unit") + ': <b>' + money(costPerUnit) + '</b></div>' +
+      '<div>' + t("bcSuggestedPrice", "Suggested price") + ': <b style="color:var(--accent-green,#0a7a2f);">' + money(suggestedPrice) + '</b></div>' +
+      '<div>' + t("bcProfitPerUnit", "Profit per unit") + ': <b>' + money(profitPerUnit) + '</b></div>';
+  }
+
+  ["bcTotalCost","bcYield","bcMargin"].forEach(function(id){
+    document.getElementById(id).addEventListener("input", updateBatchCalc);
+  });
+
+  document.getElementById("bcApplyBtn").addEventListener("click", function(){
+    var totalCost = parseFloat(document.getElementById("bcTotalCost").value);
+    var yieldQty = parseFloat(document.getElementById("bcYield").value);
+    var marginPct = parseFloat(document.getElementById("bcMargin").value);
+    if(isNaN(totalCost) || isNaN(yieldQty) || yieldQty <= 0){ toast("Enter the batch cost and units produced first."); return; }
+    var costPerUnit = totalCost / yieldQty;
+    document.getElementById("itemCost").value = costPerUnit.toFixed(2);
+    if(!isNaN(marginPct) && marginPct >= 0 && marginPct < 100){
+      document.getElementById("itemPrice").value = (costPerUnit / (1 - marginPct/100)).toFixed(2);
+    }
+    toast("Applied to Buying Price" + (!isNaN(marginPct) && marginPct < 100 ? " and Price" : "") + " above.");
+  });
+
   invForm.addEventListener("submit", function(e){
     e.preventDefault();
     var id = document.getElementById("itemId").value;
@@ -2405,6 +2484,8 @@
     document.getElementById("invFormTitle").textContent = t("addNewItem", "Add New Item");
     document.getElementById("invSaveBtn").textContent = t("addItem", "Add Item");
     invCancelBtn.style.display = "none";
+    document.getElementById("batchCalcBox").style.display = "none";
+    document.getElementById("bcResult").innerHTML = "";
   }
 
   // ================= SCAN INVENTORY SHEET (OCR) =================
