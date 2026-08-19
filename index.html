@@ -1652,8 +1652,39 @@
       method: "POST",
       headers: { "Content-Type": "application/json", "apikey": WHATSAPP_API_KEY },
       body: JSON.stringify({ number: target, text: text })
+    }).then(function(){
+      // Fire the rating request right after -- a beat later so it lands as
+      // its own message rather than racing the summary above.
+      setTimeout(function(){ sendRatingRequestToCustomer(sale); }, 1500);
     }).catch(function(err){
       console.error("WhatsApp payment confirmation failed:", err);
+    });
+  }
+
+  // Real tappable WhatsApp buttons -- confirmed working on this connection.
+  // Replies aren't captured automatically (that needs an inbound webhook,
+  // not set up), so this is read manually in the group/chat for now.
+  function sendRatingRequestToCustomer(sale){
+    if(!sale.phone) return;
+    var target = normalizePakPhone(sale.phone);
+    if(!target) return;
+
+    fetch(WHATSAPP_API_URL + "/message/sendButtons/" + encodeURIComponent(WHATSAPP_INSTANCE), {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "apikey": WHATSAPP_API_KEY },
+      body: JSON.stringify({
+        number: target,
+        title: "How was your order?",
+        description: "We'd love your feedback on today's biryani 🍛",
+        footer: state.settings.storeName || "AL GHOUS BIRYANI",
+        buttons: [
+          { type: "reply", displayText: "⭐⭐⭐⭐⭐ Excellent", id: "rate_5_" + sale.id },
+          { type: "reply", displayText: "⭐⭐⭐ Okay", id: "rate_3_" + sale.id },
+          { type: "reply", displayText: "⭐ Not Great", id: "rate_1_" + sale.id }
+        ]
+      })
+    }).catch(function(err){
+      console.error("WhatsApp rating request failed:", err);
     });
   }
 
