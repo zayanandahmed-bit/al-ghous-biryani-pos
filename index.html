@@ -1492,6 +1492,38 @@
     savePendingQueue();
     flushPendingQueue();
   }
+
+  // ================= WHATSAPP SALE NOTIFICATIONS =================
+  // Fire-and-forget: posts a "new sale" message to the AL GHOUS SALES group
+  // via Evolution API right after a sale is logged. Never blocks or throws
+  // into the checkout flow — a failed WhatsApp send should never stop a sale.
+  var WHATSAPP_API_URL = "https://evolutionapi-evolution-api.lgf2ns.easypanel.host";
+  var WHATSAPP_INSTANCE = "A.P.I.S for Ali";
+  var WHATSAPP_API_KEY = "4FF5997A30BD-4D28-AC34-33B281BBEFFE";
+  var WHATSAPP_GROUP_JID = "120363429548871085@g.us";
+
+  function sendNewSaleWhatsApp(sale){
+    var itemLines = (sale.lines || []).map(function(l){
+      return "• " + l.qty + " x " + l.name + " — " + money(l.subtotal);
+    }).join("\n");
+    var when = new Date(sale.date);
+    var text = "🧾 *New Sale* — " + (state.settings.storeName || "AL GHOUS BIRYANI") + "\n" +
+      "Receipt #" + sale.receiptNo + "\n" +
+      when.toLocaleDateString() + " " + when.toLocaleTimeString() + "\n\n" +
+      itemLines + "\n\n" +
+      "Total: *" + money(sale.grand) + "*\n" +
+      "Payment: " + sale.payment + "\n" +
+      "Customer: " + (sale.customer || "Walk-in customer") + "\n" +
+      "Cashier: " + (sale.cashier || "-");
+
+    fetch(WHATSAPP_API_URL + "/message/sendText/" + encodeURIComponent(WHATSAPP_INSTANCE), {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "apikey": WHATSAPP_API_KEY },
+      body: JSON.stringify({ number: WHATSAPP_GROUP_JID, text: text })
+    }).catch(function(err){
+      console.error("WhatsApp sale notification failed:", err);
+    });
+  }
   function pushRefundInstant(refund){
     pendingQueue.refunds.push(refund);
     savePendingQueue();
@@ -4069,6 +4101,7 @@
     state.sales.push(sale);
     saveSales();
     pushSaleInstant(sale);
+    sendNewSaleWhatsApp(sale);
 
     state.pendingDeliveries = state.pendingDeliveries.filter(function(o){ return o.id !== id; });
     savePendingDeliveries();
@@ -4296,6 +4329,7 @@
     state.sales.push(sale);
     saveSales();
     pushSaleInstant(sale);
+    sendNewSaleWhatsApp(sale);
 
     if(creditCustomer){
       creditCustomer.balance = (creditCustomer.balance || 0) + totals.grand;
