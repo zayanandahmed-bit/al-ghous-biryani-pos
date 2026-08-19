@@ -4388,7 +4388,8 @@
     if(payMethod === "Cash"){
       if(isNaN(cash)){ toast("Enter the cash received amount."); return; }
       if(cash < totals.grand){
-        if(!confirm("Cash received is less than the total. Complete sale anyway?")) return;
+        toast("Cash received (" + money(cash) + ") is less than the total (" + money(totals.grand) + "). Collect the full amount before completing.");
+        return;
       }
     }
 
