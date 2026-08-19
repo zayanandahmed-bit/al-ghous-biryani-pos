@@ -4335,6 +4335,9 @@
     var isCredit = this.value === "Credit (Udhaar)";
     document.getElementById("creditCustomerBox").style.display = isCredit ? "block" : "none";
     if(isCredit) populateCreditCustomerSelect();
+    if(document.getElementById("orderType").value !== "Delivery"){
+      document.getElementById("cashReceivedBox").style.display = isCredit ? "none" : "block";
+    }
   });
 
   document.getElementById("orderType").addEventListener("change", function(){
@@ -4385,10 +4388,14 @@
     var totals = updateTotals();
     var cash = parseFloat(document.getElementById("cashReceived").value);
 
-    if(payMethod === "Cash"){
-      if(isNaN(cash)){ toast("Enter the cash received amount."); return; }
+    // Credit (Udhaar) is the one intentional exception -- nothing is
+    // collected at sale time, that's the whole point of it. Every other
+    // payment method must show the full amount received before a sale
+    // can be completed.
+    if(payMethod !== "Credit (Udhaar)"){
+      if(isNaN(cash)){ toast("Enter the amount received."); return; }
       if(cash < totals.grand){
-        toast("Cash received (" + money(cash) + ") is less than the total (" + money(totals.grand) + "). Collect the full amount before completing.");
+        toast("Amount received (" + money(cash) + ") is less than the total (" + money(totals.grand) + "). Collect the full amount before completing.");
         return;
       }
     }
