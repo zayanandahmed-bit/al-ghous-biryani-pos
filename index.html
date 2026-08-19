@@ -4156,7 +4156,8 @@
 
     var totals = computeCartTotals(order.cart, order.discount, order.tax);
     if(received < totals.grand){
-      if(!confirm("Amount received (" + money(received) + ") is less than the total (" + money(totals.grand) + "). Complete anyway?")) return;
+      toast("Amount received (" + money(received) + ") is less than the total (" + money(totals.grand) + "). Collect the full amount before confirming.");
+      return;
     }
     var lines = order.cart.map(function(line){
       var item = state.items.find(function(it){ return it.id === line.itemId; });
