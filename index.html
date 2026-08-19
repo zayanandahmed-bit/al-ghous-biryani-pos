@@ -320,6 +320,14 @@
           <div id="quickPickGrid" style="display:flex;flex-wrap:wrap;gap:8px;"></div>
         </div>
 
+        <div class="panel" id="pendingDeliveriesPanel" style="display:none;">
+          <div class="flex-between">
+            <h2 data-i18n="pendingDeliveries">Pending Deliveries</h2>
+            <span id="pendingDeliveriesCount" style="font-size:13px;color:var(--muted);"></span>
+          </div>
+          <div id="pendingDeliveriesList"></div>
+        </div>
+
         <div class="panel">
           <div class="flex-between">
             <h2 data-i18n="cart">Cart</h2>
@@ -362,17 +370,25 @@
         <div style="margin-top:14px;">
           <label data-i18n="paymentMethod">Payment Method</label>
           <select id="paymentMethod">
-            <option data-i18n="cash">Cash</option>
-            <option data-i18n="card">Card</option>
-            <option data-i18n="mobileWallet">Mobile Wallet</option>
-            <option data-i18n="creditUdhaar">Credit (Udhaar)</option>
+            <option value="Cash" data-i18n="cash">Cash</option>
+            <option value="Card" data-i18n="card">Card</option>
+            <option value="Mobile Wallet" data-i18n="mobileWallet">Mobile Wallet</option>
+            <option value="Credit (Udhaar)" data-i18n="creditUdhaar">Credit (Udhaar)</option>
+            <option value="WhatsApp/Delivery" data-i18n="whatsappDelivery">WhatsApp/Delivery</option>
           </select>
         </div>
         <div style="margin-top:14px;display:none;" id="creditCustomerBox">
           <label data-i18n="customerRequired">Customer *</label>
           <select id="creditCustomerSelect"></select>
         </div>
-        <div style="margin-top:14px;">
+        <div style="margin-top:14px;display:none;" id="deliveryDetailsBox">
+          <div class="grid grid-2">
+            <div><label data-i18n="phoneOptional">Phone (optional)</label><input id="deliveryPhone" placeholder="03xx-xxxxxxx"></div>
+            <div><label data-i18n="addressNotes">Address / Notes</label><input id="deliveryNotes" placeholder="Optional"></div>
+          </div>
+          <p class="hint" style="margin-top:6px;" data-i18n="deliveryHint">This sends the order to Pending Deliveries below — nothing is charged or logged as a sale until you confirm it there, once the rider comes back with the payment.</p>
+        </div>
+        <div style="margin-top:14px;" id="cashReceivedBox">
           <label data-i18n="cashReceived">Cash Received</label>
           <input type="number" id="cashReceived" placeholder="0.00">
           <div id="changeDue" style="margin-top:6px;font-size:13px;color:var(--muted);"></div>
@@ -1306,6 +1322,7 @@
     cashiers: [],
     currentCashierId: null,
     heldSales: [],
+    pendingDeliveries: [],
     refunds: [],
     shifts: [],
     activeShift: null,
@@ -1340,6 +1357,7 @@
   function saveCashiers(){ saveLocalState(); pushDomainInstant("cashiers"); }
   function saveCurrentCashier(){ /* session-only, kept in memory — not persisted anywhere */ }
   function saveHeld(){ saveLocalState(); pushDomainInstant("heldSales"); }
+  function savePendingDeliveries(){ saveLocalState(); pushDomainInstant("pendingDeliveries"); }
   function saveRefunds(){ saveLocalState(); }
   function saveShifts(){ saveLocalState(); pushDomainInstant("shifts"); }
   function saveActiveShift(){ saveLocalState(); pushDomainInstant("activeShift"); }
@@ -1360,6 +1378,7 @@
       var snapshot = {
         items: state.items, itemCatalog: state.itemCatalog, expenses: state.expenses, categories: state.categories, suppliers: state.suppliers,
         purchases: state.purchases, cashiers: state.cashiers, heldSales: state.heldSales,
+        pendingDeliveries: state.pendingDeliveries,
         shifts: state.shifts, activeShift: state.activeShift, settings: state.settings,
         sales: state.sales, refunds: state.refunds, receiptCounter: state.receiptCounter,
         customers: state.customers, customerPayments: state.customerPayments,
@@ -1436,6 +1455,7 @@
       purchases: state.purchases,
       cashiers: state.cashiers,
       heldSales: state.heldSales,
+      pendingDeliveries: state.pendingDeliveries,
       refunds: state.refunds,
       shifts: state.shifts,
       activeShift: state.activeShift,
@@ -1581,6 +1601,7 @@
     purchases: "sync_replace_purchases_agb",
     cashiers: "sync_replace_cashiers_agb",
     heldSales: "sync_replace_held_sales_agb",
+    pendingDeliveries: "sync_replace_pending_deliveries_agb",
     shifts: "sync_replace_shifts_agb",
     activeShift: "sync_replace_active_shift_agb",
     settings: "sync_replace_settings_agb",
@@ -1750,6 +1771,7 @@
       state.cashiers = data.cashiers.map(function(c){ c.pin = str(c.pin); return c; });
     }
     if(data.heldSales) { state.heldSales = data.heldSales; }
+    if(data.pendingDeliveries) { state.pendingDeliveries = data.pendingDeliveries; }
     if(data.refunds) { state.refunds = data.refunds; }
     if(data.shifts) { state.shifts = data.shifts; }
     if(typeof data.activeShift !== "undefined") { state.activeShift = data.activeShift; }
@@ -1845,6 +1867,10 @@
     urduToggle: "اردو / Urdu", localDataNote: "تمام ڈیٹا اس براؤزر میں محفوظ ہے۔",
     quickPick: "فوری انتخاب", quickPickCheckbox: "بلنگ میں فوری انتخاب کے بٹن کے طور پر دکھائیں",
     quickPickOn: "فوری انتخاب: آن", quickPickOff: "فوری انتخاب: آف", left: "باقی",
+    whatsappDelivery: "واٹس ایپ / ڈیلیوری", phoneOptional: "فون (اختیاری)", addressNotes: "پتہ / نوٹس",
+    deliveryHint: "یہ آرڈر نیچے پینڈنگ ڈیلیوریز میں چلا جائے گا — جب تک آپ رائیڈر کی ادائیگی کے بعد اسے کنفرم نہیں کرتے، نہ کچھ چارج ہوگا نہ سیل کے طور پر درج ہوگا۔",
+    queueDelivery: "پینڈنگ ڈیلیوریز میں بھیجیں", pendingDeliveries: "پینڈنگ ڈیلیوریز", pending: "زیر التوا",
+    confirmDelivery: "کنفرم کریں اور سیل درج کریں",
     posSubtitle: "پوائنٹ آف سیل",
     navDashboard: "ڈیش بورڈ", navBilling: "بلنگ", navInventory: "انوینٹری", navItemDatabase: "آئٹم ڈیٹا بیس",
     navPurchases: "خریداری", navCustomers: "گاہک (ادھار)", navSales: "فروخت کی تاریخ", navFinancials: "مالیات", navSettings: "سیٹنگز",
@@ -3942,6 +3968,116 @@
     }).join("");
   }
 
+  // Orders placed over WhatsApp/phone for delivery — queued here (unpaid,
+  // stock untouched) as soon as they're sent to the kitchen. Confirming one
+  // is what actually logs the sale, exactly like a normal checkout would,
+  // just using the order's saved cart/customer/discount/tax instead of the
+  // live Billing form.
+  function renderPendingDeliveries(){
+    var panel = document.getElementById("pendingDeliveriesPanel");
+    var list = document.getElementById("pendingDeliveriesList");
+    var orders = state.pendingDeliveries.slice().sort(function(a,b){ return new Date(a.date) - new Date(b.date); });
+    if(orders.length === 0){
+      panel.style.display = "none";
+      list.innerHTML = "";
+      document.getElementById("pendingDeliveriesCount").textContent = "";
+      return;
+    }
+    panel.style.display = "block";
+    document.getElementById("pendingDeliveriesCount").textContent = orders.length + " " + t("pending", "pending");
+    list.innerHTML = orders.map(function(o){
+      var itemCount = o.cart.reduce(function(s,l){ return s+l.qty; }, 0);
+      var total = computeCartTotals(o.cart, o.discount, o.tax).grand;
+      var d = new Date(o.date);
+      return '<div class="held-row">' +
+        '<span>' + escapeHtml(o.customer || "Walk-in customer") + (o.phone ? " (" + escapeHtml(o.phone) + ")" : "") +
+          ' · ' + itemCount + ' ' + t("items", "item(s)") + ' · ' + money(total) + ' · ' + d.toLocaleTimeString() +
+          (o.notes ? '<br><span style="font-size:12px;color:var(--muted);">' + escapeHtml(o.notes) + '</span>' : '') +
+        '</span>' +
+        '<span>' +
+          '<button class="btn green small" onclick="POS.confirmDelivery(\''+o.id+'\')">' + t("confirmDelivery", "Confirm & Log Sale") + '</button> ' +
+          '<button class="btn danger small" onclick="POS.cancelPendingDelivery(\''+o.id+'\')">' + t("cancel", "Cancel") + '</button>' +
+        '</span>' +
+      '</div>';
+    }).join("");
+  }
+
+  // Same math as updateTotals(), just against a stored cart array instead
+  // of the live Billing form — used to price a pending delivery both for
+  // display and at confirm time.
+  function computeCartTotals(cart, discountPct, taxPct){
+    var subtotal = cart.reduce(function(sum, line){
+      var item = state.items.find(function(it){ return it.id === line.itemId; });
+      return sum + (item ? item.price * line.qty : 0);
+    }, 0);
+    discountPct = parseFloat(discountPct) || 0;
+    taxPct = parseFloat(taxPct) || 0;
+    var discountAmt = subtotal * (discountPct/100);
+    var taxable = subtotal - discountAmt;
+    var taxAmt = taxable * (taxPct/100);
+    var grand = taxable + taxAmt;
+    return { subtotal: subtotal, discountPct: discountPct, discountAmt: discountAmt, taxPct: taxPct, taxAmt: taxAmt, grand: grand };
+  }
+
+  function confirmDelivery(id){
+    var order = state.pendingDeliveries.find(function(o){ return o.id === id; });
+    if(!order) return;
+    if(order.cart.length === 0){ toast("This order's cart is empty."); return; }
+
+    for(var i=0;i<order.cart.length;i++){
+      var line = order.cart[i];
+      var item = state.items.find(function(it){ return it.id === line.itemId; });
+      if(!item){ toast("An item in this order no longer exists in Inventory — can't confirm."); return; }
+    }
+
+    var totals = computeCartTotals(order.cart, order.discount, order.tax);
+    var lines = order.cart.map(function(line){
+      var item = state.items.find(function(it){ return it.id === line.itemId; });
+      return { itemId: item.id, name: item.name, barcode: item.barcode||"", price: item.price, qty: line.qty, unit: item.unit||"", subtotal: item.price*line.qty };
+    });
+    order.cart.forEach(function(line){
+      var item = state.items.find(function(it){ return it.id === line.itemId; });
+      item.stock = Math.max(0, item.stock - line.qty);
+    });
+    saveItems();
+
+    var sale = {
+      id: uid(),
+      receiptNo: nextReceiptNo(),
+      date: new Date().toISOString(),
+      customer: order.customer || "Walk-in customer",
+      customerId: null,
+      cashier: order.cashier || currentCashierName(),
+      payment: "WhatsApp/Delivery",
+      cash: totals.grand,
+      lines: lines,
+      subtotal: totals.subtotal,
+      discountPct: totals.discountPct,
+      discountAmt: totals.discountAmt,
+      taxPct: totals.taxPct,
+      taxAmt: totals.taxAmt,
+      grand: totals.grand
+    };
+    state.sales.push(sale);
+    saveSales();
+    pushSaleInstant(sale);
+
+    state.pendingDeliveries = state.pendingDeliveries.filter(function(o){ return o.id !== id; });
+    savePendingDeliveries();
+
+    showReceipt(sale);
+    renderPendingDeliveries();
+    renderInventory();
+    toast("Delivery confirmed and sale logged.");
+  }
+
+  function cancelPendingDelivery(id){
+    if(!confirm("Cancel this pending delivery? Nothing was charged or logged, so there's nothing to undo — the order just goes away.")) return;
+    state.pendingDeliveries = state.pendingDeliveries.filter(function(o){ return o.id !== id; });
+    savePendingDeliveries();
+    renderPendingDeliveries();
+  }
+
   function changeQty(itemId, delta){
     var line = state.cart.find(function(l){ return l.itemId === itemId; });
     var item = state.items.find(function(it){ return it.id === itemId; });
@@ -3987,6 +4123,7 @@
 
   function renderCart(){
     renderQuickPick();
+    renderPendingDeliveries();
     var body = document.getElementById("cartBody");
     var empty = document.getElementById("cartEmpty");
     if(state.cart.length === 0){
@@ -4058,15 +4195,50 @@
 
   document.getElementById("paymentMethod").addEventListener("change", function(){
     var isCredit = this.value === "Credit (Udhaar)";
+    var isDelivery = this.value === "WhatsApp/Delivery";
     document.getElementById("creditCustomerBox").style.display = isCredit ? "block" : "none";
     if(isCredit) populateCreditCustomerSelect();
+    document.getElementById("deliveryDetailsBox").style.display = isDelivery ? "block" : "none";
+    document.getElementById("cashReceivedBox").style.display = isDelivery ? "none" : "block";
+    document.getElementById("checkoutBtn").textContent = isDelivery ? t("queueDelivery", "Send to Pending Deliveries") : t("completeSale", "Complete Sale & Print Receipt");
   });
 
   document.getElementById("checkoutBtn").addEventListener("click", function(){
     if(state.cart.length === 0){ toast("Cart is empty."); return; }
+    var payMethod = document.getElementById("paymentMethod").value;
+
+    // Delivery orders aren't logged as a sale yet — the order is queued,
+    // the kitchen can start on it, and nothing hits inventory/revenue until
+    // the rider is back with the money and it's confirmed from the queue.
+    if(payMethod === "WhatsApp/Delivery"){
+      state.pendingDeliveries.push({
+        id: uid(),
+        date: new Date().toISOString(),
+        cart: state.cart.slice(),
+        customer: document.getElementById("customerName").value.trim(),
+        phone: document.getElementById("deliveryPhone").value.trim(),
+        discount: document.getElementById("discountInput").value,
+        tax: document.getElementById("taxInput").value,
+        notes: document.getElementById("deliveryNotes").value.trim(),
+        cashier: currentCashierName()
+      });
+      savePendingDeliveries();
+      state.cart = [];
+      document.getElementById("customerName").value = "";
+      document.getElementById("deliveryPhone").value = "";
+      document.getElementById("deliveryNotes").value = "";
+      document.getElementById("discountInput").value = state.settings.defaultDiscount;
+      document.getElementById("taxInput").value = state.settings.defaultTax;
+      document.getElementById("paymentMethod").value = "Cash";
+      document.getElementById("paymentMethod").dispatchEvent(new Event("change"));
+      renderCart();
+      renderPendingDeliveries();
+      toast("Order queued for delivery. Confirm it once the rider returns with payment.");
+      return;
+    }
+
     var totals = updateTotals();
     var cash = parseFloat(document.getElementById("cashReceived").value);
-    var payMethod = document.getElementById("paymentMethod").value;
 
     if(payMethod === "Cash" && (isNaN(cash) || cash < totals.grand)){
       if(!confirm("Cash received is less than the total, or not entered. Complete sale anyway?")) return;
@@ -5709,7 +5881,7 @@
       var backup = {
         items: state.items, sales: results[0], categories: state.categories,
         suppliers: state.suppliers, purchases: state.purchases,
-        cashiers: state.cashiers, heldSales: state.heldSales, refunds: results[1].refunds || [],
+        cashiers: state.cashiers, heldSales: state.heldSales, pendingDeliveries: state.pendingDeliveries, refunds: results[1].refunds || [],
         shifts: state.shifts, activeShift: state.activeShift,
         settings: state.settings, exportedAt: new Date().toISOString()
       };
@@ -5744,6 +5916,7 @@
         state.purchases = Array.isArray(data.purchases) ? data.purchases : [];
         state.cashiers = Array.isArray(data.cashiers) ? data.cashiers : [];
         state.heldSales = Array.isArray(data.heldSales) ? data.heldSales : [];
+        state.pendingDeliveries = Array.isArray(data.pendingDeliveries) ? data.pendingDeliveries : [];
         state.refunds = Array.isArray(data.refunds) ? data.refunds : [];
         state.shifts = Array.isArray(data.shifts) ? data.shifts : [];
         state.activeShift = data.activeShift || null;
@@ -5809,6 +5982,8 @@
     deleteHeldSale: deleteHeldSale,
     openRefundModal: openRefundModal,
     deleteSale: deleteSale,
+    confirmDelivery: confirmDelivery,
+    cancelPendingDelivery: cancelPendingDelivery,
     updateRefundTotal: updateRefundTotal,
     openLabelModal: openLabelModal,
     showShiftReport: showShiftReport,

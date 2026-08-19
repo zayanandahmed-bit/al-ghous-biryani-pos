@@ -1,0 +1,124 @@
+{
+  "name": "AL GHOUS BIRYANI - Daily Report",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "cronExpression",
+              "expression": "0 0 * * *"
+            }
+          ]
+        }
+      },
+      "id": "a1a1a1a1-0001-4000-8000-000000000001",
+      "name": "Every night at midnight",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [0, 0]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://ajevxwdgmpaakjkffvmf.supabase.co/rest/v1/rpc/get_daily_report_agb",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "apikey",
+              "value": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImFqZXZ4d2RnbXBhYWtqa2Zmdm1mIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODUwNjE5NzIsImV4cCI6MjEwMDYzNzk3Mn0.bB97bHOFgCeMUTYUraOArzvXAkFRHxiajrCg3gwCGrc"
+            },
+            {
+              "name": "Authorization",
+              "value": "Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImFqZXZ4d2RnbXBhYWtqa2Zmdm1mIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODUwNjE5NzIsImV4cCI6MjEwMDYzNzk3Mn0.bB97bHOFgCeMUTYUraOArzvXAkFRHxiajrCg3gwCGrc"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "{}",
+        "options": {}
+      },
+      "id": "a1a1a1a1-0002-4000-8000-000000000002",
+      "name": "Fetch daily report from Supabase",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [220, 0]
+    },
+    {
+      "parameters": {
+        "jsCode": "const r = $input.first().json;\n\nconst money = (n) => 'Rs ' + Number(n || 0).toLocaleString('en-PK', { minimumFractionDigits: 0, maximumFractionDigits: 0 });\n\nconst moneyOut = Number(r.purchasesTotal || 0) + Number(r.expensesTotal || 0) + Number(r.salariesTotal || 0);\nconst net = Number(r.revenue || 0) - moneyOut;\n\nconst topItemsRows = (r.topItems || []).length\n  ? r.topItems.map(t => `<tr><td style=\"padding:4px 10px;border-bottom:1px solid #eee;\">${t.name}</td><td style=\"padding:4px 10px;border-bottom:1px solid #eee;text-align:right;\">${t.qty}</td><td style=\"padding:4px 10px;border-bottom:1px solid #eee;text-align:right;\">${money(t.revenue)}</td></tr>`).join('')\n  : '<tr><td colspan=\"3\" style=\"padding:8px;color:#888;\">No sales today.</td></tr>';\n\nconst lowStockRows = (r.lowStockItems || []).length\n  ? r.lowStockItems.map(i => `<li>${i.name} — ${i.stock} left (alert below ${i.lowStock})</li>`).join('')\n  : '<li style=\"color:#888;\">None</li>';\n\nconst outOfStockRows = (r.outOfStockItems || []).length\n  ? r.outOfStockItems.map(n => `<li>${n}</li>`).join('')\n  : '<li style=\"color:#888;\">None</li>';\n\nconst html = `\n<div style=\"font-family:Arial,Helvetica,sans-serif;max-width:600px;margin:0 auto;color:#222;\">\n  <h2 style=\"margin-bottom:0;\">AL GHOUS BIRYANI — Daily Report</h2>\n  <p style=\"color:#666;margin-top:4px;\">${r.date}</p>\n\n  <table style=\"width:100%;border-collapse:collapse;margin:16px 0;\">\n    <tr><td style=\"padding:6px 0;font-weight:bold;\">Revenue</td><td style=\"padding:6px 0;text-align:right;font-weight:bold;color:#0a7a2f;\">${money(r.revenue)}</td></tr>\n    <tr><td style=\"padding:6px 0;\">Sales</td><td style=\"padding:6px 0;text-align:right;\">${r.salesCount}</td></tr>\n    <tr><td style=\"padding:6px 0;\">— Cash</td><td style=\"padding:6px 0;text-align:right;\">${money(r.cashSales)}</td></tr>\n    <tr><td style=\"padding:6px 0;\">— Card</td><td style=\"padding:6px 0;text-align:right;\">${money(r.cardSales)}</td></tr>\n    <tr><td style=\"padding:6px 0;\">— Mobile Wallet</td><td style=\"padding:6px 0;text-align:right;\">${money(r.walletSales)}</td></tr>\n    <tr><td style=\"padding:6px 0;\">— Credit (Udhaar)</td><td style=\"padding:6px 0;text-align:right;\">${money(r.creditSales)}</td></tr>\n    <tr><td style=\"padding:6px 0;\">Refunds</td><td style=\"padding:6px 0;text-align:right;color:#b00020;\">${r.refundsCount} · ${money(r.refundsTotal)}</td></tr>\n  </table>\n\n  <h3 style=\"margin-bottom:6px;\">Top Items Today</h3>\n  <table style=\"width:100%;border-collapse:collapse;font-size:14px;\">\n    <tr><th style=\"text-align:left;padding:4px 10px;border-bottom:2px solid #333;\">Item</th><th style=\"text-align:right;padding:4px 10px;border-bottom:2px solid #333;\">Qty</th><th style=\"text-align:right;padding:4px 10px;border-bottom:2px solid #333;\">Revenue</th></tr>\n    ${topItemsRows}\n  </table>\n\n  <h3 style=\"margin-bottom:6px;margin-top:20px;\">Money Out Today</h3>\n  <table style=\"width:100%;border-collapse:collapse;\">\n    <tr><td style=\"padding:6px 0;\">Stock Purchases</td><td style=\"padding:6px 0;text-align:right;\">${money(r.purchasesTotal)}</td></tr>\n    <tr><td style=\"padding:6px 0;\">Other Expenses</td><td style=\"padding:6px 0;text-align:right;\">${money(r.expensesTotal)}</td></tr>\n    <tr><td style=\"padding:6px 0;\">Salaries Paid</td><td style=\"padding:6px 0;text-align:right;\">${money(r.salariesTotal)}</td></tr>\n    <tr><td style=\"padding:6px 0;font-weight:bold;\">Total Money Out</td><td style=\"padding:6px 0;text-align:right;font-weight:bold;color:#b00020;\">${money(moneyOut)}</td></tr>\n    <tr><td style=\"padding:6px 0;font-weight:bold;\">Net Profit / Loss</td><td style=\"padding:6px 0;text-align:right;font-weight:bold;color:${net >= 0 ? '#0a7a2f' : '#b00020'};\">${money(net)}</td></tr>\n    <tr><td style=\"padding:6px 0;\">Credit Collected (Udhaar payments in)</td><td style=\"padding:6px 0;text-align:right;\">${money(r.creditCollected)}</td></tr>\n  </table>\n\n  <h3 style=\"margin-bottom:6px;margin-top:20px;\">Low Stock</h3>\n  <ul style=\"margin:0;padding-left:20px;\">${lowStockRows}</ul>\n\n  <h3 style=\"margin-bottom:6px;margin-top:20px;\">Out of Stock</h3>\n  <ul style=\"margin:0;padding-left:20px;\">${outOfStockRows}</ul>\n\n  <p style=\"color:#999;font-size:12px;margin-top:24px;\">Automated nightly report — AL GHOUS BIRYANI POS</p>\n</div>\n`;\n\nreturn [{ json: { date: r.date, subject: `AL GHOUS BIRYANI — Daily Report (${r.date})`, html } }];"
+      },
+      "id": "a1a1a1a1-0003-4000-8000-000000000003",
+      "name": "Build email HTML",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [440, 0]
+    },
+    {
+      "parameters": {
+        "fromEmail": "reports@yourdomain.com",
+        "toEmail": "PUT_YOUR_EMAIL_HERE@example.com",
+        "subject": "={{ $json.subject }}",
+        "emailFormat": "html",
+        "html": "={{ $json.html }}",
+        "options": {}
+      },
+      "id": "a1a1a1a1-0004-4000-8000-000000000004",
+      "name": "Email me the report",
+      "type": "n8n-nodes-base.emailSend",
+      "typeVersion": 2.1,
+      "position": [660, 0],
+      "credentials": {
+        "smtp": {
+          "id": "REPLACE_WITH_YOUR_SMTP_CREDENTIAL_ID",
+          "name": "Your SMTP account"
+        }
+      }
+    }
+  ],
+  "connections": {
+    "Every night at midnight": {
+      "main": [
+        [
+          {
+            "node": "Fetch daily report from Supabase",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Fetch daily report from Supabase": {
+      "main": [
+        [
+          {
+            "node": "Build email HTML",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build email HTML": {
+      "main": [
+        [
+          {
+            "node": "Email me the report",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "pinData": {},
+  "meta": {
+    "instanceId": "al-ghous-biryani-daily-report"
+  }
+}

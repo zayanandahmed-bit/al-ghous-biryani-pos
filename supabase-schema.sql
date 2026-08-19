@@ -185,6 +185,30 @@ create table if not exists held_sales_cart_agb (
   qty numeric
 );
 
+-- Orders placed over WhatsApp/phone for delivery — the cart is built and
+-- sent to the kitchen right away, but the sale itself isn't logged (stock
+-- isn't deducted, no receipt number issued) until the rider comes back with
+-- the money and the cashier hits Confirm on it, from Billing. Structurally
+-- identical to held_sales_agb; kept separate since the two mean different
+-- things (a held sale is paused mid-checkout at the counter, a pending
+-- delivery hasn't been paid for yet at all).
+create table if not exists pending_deliveries_agb (
+  id text primary key,
+  date timestamptz,
+  customer text,
+  phone text default '',
+  discount numeric,
+  tax numeric,
+  notes text default '',
+  cashier text
+);
+
+create table if not exists pending_deliveries_cart_agb (
+  pending_id text,
+  item_id text,
+  qty numeric
+);
+
 create table if not exists shifts_agb (
   id text primary key,
   cashier_name text,
@@ -283,6 +307,8 @@ alter table refunds_agb enable row level security;
 alter table refund_lines_agb enable row level security;
 alter table held_sales_agb enable row level security;
 alter table held_sales_cart_agb enable row level security;
+alter table pending_deliveries_agb enable row level security;
+alter table pending_deliveries_cart_agb enable row level security;
 alter table shifts_agb enable row level security;
 alter table active_shift_agb enable row level security;
 alter table settings_agb enable row level security;
@@ -511,6 +537,20 @@ begin
          jsonb_array_elements(coalesce(h->'cart','[]'::jsonb)) c;
   end if;
 
+  if payload ? 'pendingDeliveries' then
+    delete from pending_deliveries_cart_agb where true;
+    delete from pending_deliveries_agb where true;
+    insert into pending_deliveries_agb (id, date, customer, phone, discount, tax, notes, cashier)
+    select x->>'id', (x->>'date')::timestamptz, x->>'customer', coalesce(x->>'phone',''),
+           (x->>'discount')::numeric, (x->>'tax')::numeric, coalesce(x->>'notes',''), x->>'cashier'
+    from jsonb_array_elements(payload->'pendingDeliveries') x;
+
+    insert into pending_deliveries_cart_agb (pending_id, item_id, qty)
+    select h->>'id', c->>'itemId', (c->>'qty')::numeric
+    from jsonb_array_elements(payload->'pendingDeliveries') h,
+         jsonb_array_elements(coalesce(h->'cart','[]'::jsonb)) c;
+  end if;
+
   if payload ? 'shifts' then
     delete from shifts_agb where true;
     insert into shifts_agb (id, cashier_name, start, "end", opening_cash, cash_sales, card_sales, wallet_sales, cash_refunds, txn_count, expected_cash, actual_cash, difference, notes)
@@ -623,6 +663,16 @@ begin
         )) from held_sales_cart_agb hc where hc.held_id = h.id), '[]'::jsonb)
       )
     ) from held_sales_agb h), '[]'::jsonb),
+
+    'pendingDeliveries', coalesce((select jsonb_agg(
+      jsonb_build_object(
+        'id', p.id, 'date', p.date, 'customer', p.customer, 'phone', p.phone,
+        'discount', p.discount, 'tax', p.tax, 'notes', p.notes, 'cashier', p.cashier,
+        'cart', coalesce((select jsonb_agg(jsonb_build_object(
+          'itemId', pc.item_id, 'qty', pc.qty
+        )) from pending_deliveries_cart_agb pc where pc.pending_id = p.id), '[]'::jsonb)
+      )
+    ) from pending_deliveries_agb p), '[]'::jsonb),
 
     'shifts', coalesce((select jsonb_agg(jsonb_build_object(
       'id', id, 'cashierName', cashier_name, 'start', start, 'end', "end",
@@ -1178,6 +1228,27 @@ begin
 end;
 $$;
 
+create or replace function sync_replace_pending_deliveries_agb("pendingDeliveries" jsonb)
+returns void
+language plpgsql
+security definer
+set search_path = public
+as $$
+begin
+  delete from pending_deliveries_cart_agb where true;
+  delete from pending_deliveries_agb where true;
+  insert into pending_deliveries_agb (id, date, customer, phone, discount, tax, notes, cashier)
+  select x->>'id', (x->>'date')::timestamptz, x->>'customer', coalesce(x->>'phone',''),
+         (x->>'discount')::numeric, (x->>'tax')::numeric, coalesce(x->>'notes',''), x->>'cashier'
+  from jsonb_array_elements("pendingDeliveries") x;
+
+  insert into pending_deliveries_cart_agb (pending_id, item_id, qty)
+  select h->>'id', c->>'itemId', (c->>'qty')::numeric
+  from jsonb_array_elements("pendingDeliveries") h,
+       jsonb_array_elements(coalesce(h->'cart','[]'::jsonb)) c;
+end;
+$$;
+
 drop function if exists sync_replace_shifts_agb(jsonb);
 create or replace function sync_replace_shifts_agb(shifts jsonb)
 returns void
@@ -1258,6 +1329,7 @@ grant execute on function sync_replace_customer_payments_agb(jsonb) to anon;
 grant execute on function sync_replace_employees_agb(jsonb) to anon;
 grant execute on function sync_replace_employee_payments_agb(jsonb) to anon;
 grant execute on function sync_replace_held_sales_agb(jsonb) to anon;
+grant execute on function sync_replace_pending_deliveries_agb(jsonb) to anon;
 grant execute on function sync_replace_shifts_agb(jsonb) to anon;
 grant execute on function sync_replace_active_shift_agb(jsonb) to anon;
 grant execute on function sync_replace_settings_agb(jsonb) to anon;
