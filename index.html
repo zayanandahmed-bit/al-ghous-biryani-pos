@@ -4155,6 +4155,9 @@
     }
 
     var totals = computeCartTotals(order.cart, order.discount, order.tax);
+    if(received < totals.grand){
+      if(!confirm("Amount received (" + money(received) + ") is less than the total (" + money(totals.grand) + "). Complete anyway?")) return;
+    }
     var lines = order.cart.map(function(line){
       var item = state.items.find(function(it){ return it.id === line.itemId; });
       return { itemId: item.id, name: item.name, barcode: item.barcode||"", price: item.price, qty: line.qty, unit: item.unit||"", subtotal: item.price*line.qty };
