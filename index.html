@@ -1513,7 +1513,9 @@
       itemLines + "\n\n" +
       "Total: *" + money(sale.grand) + "*\n" +
       "Payment: " + sale.payment + "\n" +
-      "Customer: " + (sale.customer || "Walk-in customer") + "\n" +
+      "Customer: " + (sale.customer || "Walk-in customer") +
+      (sale.phone ? "\nPhone: " + sale.phone : "") +
+      (sale.address ? "\nAddress: " + sale.address : "") + "\n" +
       "Cashier: " + (sale.cashier || "-");
 
     fetch(WHATSAPP_API_URL + "/message/sendText/" + encodeURIComponent(WHATSAPP_INSTANCE), {
@@ -4087,6 +4089,8 @@
       date: new Date().toISOString(),
       customer: order.customer || "Walk-in customer",
       customerId: null,
+      phone: order.phone || "",
+      address: order.notes || "",
       cashier: order.cashier || currentCashierName(),
       payment: "WhatsApp/Delivery",
       cash: totals.grand,
