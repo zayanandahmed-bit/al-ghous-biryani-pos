@@ -133,6 +133,7 @@ create table if not exists sales_agb (
   payment text,
   order_type text default 'Walk-in',
   phone text default '',
+  address text default '',
   cash numeric,
   subtotal numeric,
   discount_pct numeric,
@@ -145,6 +146,7 @@ create table if not exists sales_agb (
 -- Additive: older databases created before these existed won't have them.
 alter table sales_agb add column if not exists order_type text default 'Walk-in';
 alter table sales_agb add column if not exists phone text default '';
+alter table sales_agb add column if not exists address text default '';
 
 create table if not exists sale_lines_agb (
   sale_id text,
@@ -503,9 +505,9 @@ begin
     truncate item_sales_totals_agb;
     update sales_overall_totals_agb set count = 0, revenue = 0 where key = 'all';
 
-    insert into sales_agb (id, receipt_no, date, customer, cashier, payment, order_type, phone, cash, subtotal, discount_pct, discount_amt, tax_pct, tax_amt, grand)
+    insert into sales_agb (id, receipt_no, date, customer, cashier, payment, order_type, phone, address, cash, subtotal, discount_pct, discount_amt, tax_pct, tax_amt, grand)
     select x->>'id', (x->>'receiptNo')::integer, (x->>'date')::timestamptz, x->>'customer', x->>'cashier', x->>'payment',
-           coalesce(x->>'orderType', 'Walk-in'), coalesce(x->>'phone', ''),
+           coalesce(x->>'orderType', 'Walk-in'), coalesce(x->>'phone', ''), coalesce(x->>'address', ''),
            (x->>'cash')::numeric, (x->>'subtotal')::numeric, (x->>'discountPct')::numeric, (x->>'discountAmt')::numeric,
            (x->>'taxPct')::numeric, (x->>'taxAmt')::numeric, (x->>'grand')::numeric
     from jsonb_array_elements(payload->'sales') x;
@@ -854,16 +856,16 @@ security definer
 set search_path = public
 as $$
 begin
-  insert into sales_agb (id, receipt_no, date, customer, cashier, payment, order_type, phone, cash, subtotal, discount_pct, discount_amt, tax_pct, tax_amt, grand)
+  insert into sales_agb (id, receipt_no, date, customer, cashier, payment, order_type, phone, address, cash, subtotal, discount_pct, discount_amt, tax_pct, tax_amt, grand)
   values (
     sale->>'id', (sale->>'receiptNo')::integer, (sale->>'date')::timestamptz, sale->>'customer', sale->>'cashier', sale->>'payment',
-    coalesce(sale->>'orderType', 'Walk-in'), coalesce(sale->>'phone', ''),
+    coalesce(sale->>'orderType', 'Walk-in'), coalesce(sale->>'phone', ''), coalesce(sale->>'address', ''),
     (sale->>'cash')::numeric, (sale->>'subtotal')::numeric, (sale->>'discountPct')::numeric, (sale->>'discountAmt')::numeric,
     (sale->>'taxPct')::numeric, (sale->>'taxAmt')::numeric, (sale->>'grand')::numeric
   )
   on conflict (id) do update set
     receipt_no = excluded.receipt_no, date = excluded.date, customer = excluded.customer,
-    cashier = excluded.cashier, payment = excluded.payment, order_type = excluded.order_type, phone = excluded.phone, cash = excluded.cash,
+    cashier = excluded.cashier, payment = excluded.payment, order_type = excluded.order_type, phone = excluded.phone, address = excluded.address, cash = excluded.cash,
     subtotal = excluded.subtotal, discount_pct = excluded.discount_pct, discount_amt = excluded.discount_amt,
     tax_pct = excluded.tax_pct, tax_amt = excluded.tax_amt, grand = excluded.grand;
 
@@ -895,9 +897,9 @@ security definer
 set search_path = public
 as $$
 begin
-  insert into sales_agb (id, receipt_no, date, customer, cashier, payment, order_type, phone, cash, subtotal, discount_pct, discount_amt, tax_pct, tax_amt, grand)
+  insert into sales_agb (id, receipt_no, date, customer, cashier, payment, order_type, phone, address, cash, subtotal, discount_pct, discount_amt, tax_pct, tax_amt, grand)
   select x->>'id', (x->>'receiptNo')::integer, (x->>'date')::timestamptz, x->>'customer', x->>'cashier', x->>'payment',
-         coalesce(x->>'orderType', 'Walk-in'), coalesce(x->>'phone', ''),
+         coalesce(x->>'orderType', 'Walk-in'), coalesce(x->>'phone', ''), coalesce(x->>'address', ''),
          (x->>'cash')::numeric, (x->>'subtotal')::numeric, (x->>'discountPct')::numeric, (x->>'discountAmt')::numeric,
          (x->>'taxPct')::numeric, (x->>'taxAmt')::numeric, (x->>'grand')::numeric
   from jsonb_array_elements(sales) x
@@ -1141,6 +1143,39 @@ end;
 $$;
 
 grant execute on function find_customer_name_by_phone_agb(text) to anon;
+
+-- ============== get_customer_details_by_phone_agb: name + address lookup ==============
+-- For the review-watcher n8n job -- given a reviewer's phone number, pulls
+-- their name and their most recent delivery address (if any -- walk-in
+-- sales that only captured a phone won't have one).
+
+create or replace function get_customer_details_by_phone_agb(p_phone text)
+returns jsonb
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  v_customer text;
+  v_address text;
+begin
+  select customer into v_customer
+  from sales_agb
+  where phone = p_phone and phone <> '' and customer <> '' and customer <> 'Walk-in customer'
+  order by date desc
+  limit 1;
+
+  select address into v_address
+  from sales_agb
+  where phone = p_phone and phone <> '' and address <> ''
+  order by date desc
+  limit 1;
+
+  return jsonb_build_object('customer', coalesce(v_customer, ''), 'address', coalesce(v_address, ''));
+end;
+$$;
+
+grant execute on function get_customer_details_by_phone_agb(text) to anon;
 
 -- ============== per-domain instant replace functions ==============
 -- Every button that adds/edits/deletes items_agb, categories_agb, suppliers_agb,
