@@ -477,30 +477,6 @@
             <input type="date" id="itemExpiry" title="For perishables — shows up in the Dashboard's Near Expiry alert.">
           </div>
         </div>
-        <div style="margin-top:12px;">
-          <button type="button" class="btn secondary small" id="toggleBatchCalcBtn" data-i18n="batchCostCalculator">🧮 Batch Cost Calculator</button>
-        </div>
-        <div id="batchCalcBox" style="display:none;margin-top:10px;padding:12px;border:1px solid var(--border);border-radius:8px;background:var(--panel-alt,rgba(0,0,0,0.02));">
-          <p class="hint" style="margin-top:0;" data-i18n="batchCalcHint">Enter what you paid for the whole batch, how many units it makes, and the price you'll sell each for — this works out your cost and profit per unit, without touching stock.</p>
-          <div class="grid grid-3">
-            <div>
-              <label data-i18n="totalBatchCost">Total Batch Cost</label>
-              <input type="number" id="bcTotalCost" step="0.01" min="0" placeholder="0.00">
-            </div>
-            <div>
-              <label data-i18n="unitsProduced">Units Produced</label>
-              <input type="number" id="bcYield" step="1" min="1" placeholder="e.g. 60">
-            </div>
-            <div>
-              <label data-i18n="sellingPrice">Selling Price (per unit)</label>
-              <input type="number" id="bcSellingPrice" step="0.01" min="0" placeholder="0.00">
-            </div>
-          </div>
-          <div id="bcResult" style="margin-top:10px;font-size:13px;"></div>
-          <div class="row" style="margin-top:10px;">
-            <button type="button" class="btn small" id="bcApplyBtn" data-i18n="applyToCostPrice">Apply to Cost &amp; Price above</button>
-          </div>
-        </div>
         <div class="row" style="margin-top:12px;align-items:center;">
           <label style="display:flex;align-items:center;gap:6px;font-weight:normal;">
             <input type="checkbox" id="itemQuickPick" style="width:auto;">
@@ -610,19 +586,23 @@
           <button type="button" class="btn secondary small" id="toggleBatchCalcBtnPurchase" data-i18n="batchCostCalculator">🧮 Batch Cost Calculator</button>
         </div>
         <div id="batchCalcBoxPurchase" style="display:none;margin-top:10px;padding:12px;border:1px solid var(--border);border-radius:8px;background:var(--panel-alt,rgba(0,0,0,0.02));">
-          <p class="hint" style="margin-top:0;" data-i18n="batchCalcHintPurchase">Enter what you paid for the whole batch, how many units it makes, and the price you'll sell each for — Apply fills in Quantity Purchased and Cost Per Unit above, and updates the selected item's selling price too.</p>
-          <div class="grid grid-3">
+          <p class="hint" style="margin-top:0;" data-i18n="batchCalcHintPurchase">Enter what you paid for one batch, how many units it makes, the price you'll sell each for, and how many identical batches this is — Apply fills in Quantity Purchased and Cost Per Unit above, and updates the selected item's selling price too.</p>
+          <div class="grid grid-4">
             <div>
               <label data-i18n="totalBatchCost">Total Batch Cost</label>
               <input type="number" id="bcTotalCostPurchase" step="0.01" min="0" placeholder="0.00">
             </div>
             <div>
-              <label data-i18n="unitsProduced">Units Produced</label>
+              <label data-i18n="unitsProduced">Units Produced (per batch)</label>
               <input type="number" id="bcYieldPurchase" step="1" min="1" placeholder="e.g. 60">
             </div>
             <div>
               <label data-i18n="sellingPrice">Selling Price (per unit)</label>
               <input type="number" id="bcSellingPricePurchase" step="0.01" min="0" placeholder="0.00">
+            </div>
+            <div>
+              <label data-i18n="numberOfBatches">Number of Batches</label>
+              <input type="number" id="bcBatchCountPurchase" step="1" min="1" value="1">
             </div>
           </div>
           <div id="bcResultPurchase" style="margin-top:10px;font-size:13px;"></div>
@@ -2057,7 +2037,8 @@
     applyToCostPrice: "اوپر لاگت اور قیمت میں لاگو کریں",
     batchCalcHintPurchase: "پورے بیچ کی قیمت، اس سے بننے والی مقدار، اور فی یونٹ فروخت کی قیمت درج کریں — لاگو کریں سے اوپر مقدار اور لاگت خودکار بھر جائیں گی، اور آئٹم کی فروخت کی قیمت بھی اپڈیٹ ہو جائے گی۔",
     applyToPurchase: "اوپر مقدار اور لاگت میں لاگو کریں",
-    bcTotalRevenue: "کل آمدنی (پورا بیچ)", bcTotalProfit: "کل منافع (پورا بیچ)",
+    bcTotalRevenue: "کل آمدنی (تمام بیچز)", bcTotalProfit: "کل منافع (تمام بیچز)",
+    numberOfBatches: "بیچز کی تعداد", bcTotalUnits: "کل یونٹس",
     quickPickOn: "فوری انتخاب: آن", quickPickOff: "فوری انتخاب: آف", left: "باقی",
     whatsappDelivery: "واٹس ایپ / ڈیلیوری", phoneOptional: "فون (اختیاری)", addressNotes: "پتہ / نوٹس",
     phoneAutofillHint: "پہچانے گئے نمبر پر گاہک کا نام خودکار طور پر بھر جائے گا۔",
@@ -2394,24 +2375,16 @@
     savePurchases();
   }
 
-  // ================= BATCH COST CALCULATOR =================
-  // "I paid X for the batch, it makes Y units" -> cost per unit + a
-  // suggested price for a target margin. Pure arithmetic against these
-  // three fields, applies straight into Buying Price / Price above.
-  document.getElementById("toggleBatchCalcBtn").addEventListener("click", function(){
-    var box = document.getElementById("batchCalcBox");
-    var showing = box.style.display !== "none";
-    box.style.display = showing ? "none" : "block";
-    if(!showing) updateBatchCalc();
-  });
-
-  // Shared by both Batch Cost Calculators (Inventory's Add/Edit Item form
-  // and Purchases' Record a Purchase form) -- same three inputs, same math,
-  // just different element ids so each form's fields stay independent.
-  function computeBatchCalc(totalCostId, yieldId, sellingPriceId, resultId){
+  // ================= BATCH COST CALCULATOR (used by Purchases only) =================
+  // "I paid X for the batch, it makes Y units per batch, across N batches" ->
+  // cost/profit per unit (unaffected by batch count) plus totals scaled by
+  // however many identical batches were made.
+  function computeBatchCalc(totalCostId, yieldId, sellingPriceId, resultId, batchCountId){
     var totalCost = parseFloat(document.getElementById(totalCostId).value);
     var yieldQty = parseFloat(document.getElementById(yieldId).value);
     var sellingPrice = parseFloat(document.getElementById(sellingPriceId).value);
+    var batchCountRaw = batchCountId ? parseFloat(document.getElementById(batchCountId).value) : 1;
+    var batchCount = (isNaN(batchCountRaw) || batchCountRaw < 1) ? 1 : batchCountRaw;
     var resultEl = document.getElementById(resultId);
 
     if(isNaN(totalCost) || isNaN(yieldQty) || yieldQty <= 0){
@@ -2419,14 +2392,15 @@
       return null;
     }
     var costPerUnit = totalCost / yieldQty;
+    var totalUnits = yieldQty * batchCount;
     if(isNaN(sellingPrice) || sellingPrice <= 0){
       resultEl.innerHTML = '<span style="color:var(--muted);">' + t("bcCostPerUnitOnly", "Cost per unit") + ': <b>' + money(costPerUnit) + '</b> — ' + t("bcEnterSellingPrice", "enter a selling price to see your profit.") + '</span>';
-      return { costPerUnit: costPerUnit, yieldQty: yieldQty, sellingPrice: null };
+      return { costPerUnit: costPerUnit, yieldQty: yieldQty, totalUnits: totalUnits, sellingPrice: null };
     }
     var profitPerUnit = sellingPrice - costPerUnit;
     var marginPct = sellingPrice > 0 ? (profitPerUnit / sellingPrice * 100) : 0;
-    var totalRevenue = sellingPrice * yieldQty;
-    var totalProfit = profitPerUnit * yieldQty;
+    var totalRevenue = sellingPrice * totalUnits;
+    var totalProfit = profitPerUnit * totalUnits;
     resultEl.innerHTML =
       '<div class="grid grid-2" style="gap:4px 20px;">' +
         '<div>' +
@@ -2435,33 +2409,13 @@
           '<div>' + t("bcMarginResult", "Margin") + ': <b>' + marginPct.toFixed(1) + '%</b></div>' +
         '</div>' +
         '<div>' +
-          '<div>' + t("bcTotalRevenue", "Total revenue (whole batch)") + ': <b>' + money(totalRevenue) + '</b></div>' +
-          '<div>' + t("bcTotalProfit", "Total profit (whole batch)") + ': <b style="color:' + (totalProfit >= 0 ? 'var(--accent-green,#0a7a2f)' : '#b00020') + ';">' + money(totalProfit) + '</b></div>' +
+          '<div>' + t("bcTotalUnits", "Total units") + ' (' + batchCount + (batchCount === 1 ? ' batch' : ' batches') + '): <b>' + totalUnits + '</b></div>' +
+          '<div>' + t("bcTotalRevenue", "Total revenue (all batches)") + ': <b>' + money(totalRevenue) + '</b></div>' +
+          '<div>' + t("bcTotalProfit", "Total profit (all batches)") + ': <b style="color:' + (totalProfit >= 0 ? 'var(--accent-green,#0a7a2f)' : '#b00020') + ';">' + money(totalProfit) + '</b></div>' +
         '</div>' +
       '</div>';
-    return { costPerUnit: costPerUnit, yieldQty: yieldQty, sellingPrice: sellingPrice, totalRevenue: totalRevenue, totalProfit: totalProfit };
+    return { costPerUnit: costPerUnit, yieldQty: yieldQty, totalUnits: totalUnits, sellingPrice: sellingPrice, totalRevenue: totalRevenue, totalProfit: totalProfit };
   }
-
-  function updateBatchCalc(){
-    computeBatchCalc("bcTotalCost", "bcYield", "bcSellingPrice", "bcResult");
-  }
-
-  ["bcTotalCost","bcYield","bcSellingPrice"].forEach(function(id){
-    document.getElementById(id).addEventListener("input", updateBatchCalc);
-  });
-
-  document.getElementById("bcApplyBtn").addEventListener("click", function(){
-    var totalCost = parseFloat(document.getElementById("bcTotalCost").value);
-    var yieldQty = parseFloat(document.getElementById("bcYield").value);
-    var sellingPrice = parseFloat(document.getElementById("bcSellingPrice").value);
-    if(isNaN(totalCost) || isNaN(yieldQty) || yieldQty <= 0){ toast("Enter the batch cost and units produced first."); return; }
-    var costPerUnit = totalCost / yieldQty;
-    document.getElementById("itemCost").value = costPerUnit.toFixed(2);
-    if(!isNaN(sellingPrice) && sellingPrice > 0){
-      document.getElementById("itemPrice").value = sellingPrice.toFixed(2);
-    }
-    toast("Applied to Buying Price" + (!isNaN(sellingPrice) && sellingPrice > 0 ? " and Price" : "") + " above.");
-  });
 
   invForm.addEventListener("submit", function(e){
     e.preventDefault();
@@ -2529,8 +2483,6 @@
     document.getElementById("invFormTitle").textContent = t("addNewItem", "Add New Item");
     document.getElementById("invSaveBtn").textContent = t("addItem", "Add Item");
     invCancelBtn.style.display = "none";
-    document.getElementById("batchCalcBox").style.display = "none";
-    document.getElementById("bcResult").innerHTML = "";
   }
 
   // ================= SCAN INVENTORY SHEET (OCR) =================
@@ -3163,18 +3115,18 @@
   });
 
   function updateBatchCalcPurchase(){
-    computeBatchCalc("bcTotalCostPurchase", "bcYieldPurchase", "bcSellingPricePurchase", "bcResultPurchase");
+    computeBatchCalc("bcTotalCostPurchase", "bcYieldPurchase", "bcSellingPricePurchase", "bcResultPurchase", "bcBatchCountPurchase");
   }
 
-  ["bcTotalCostPurchase","bcYieldPurchase","bcSellingPricePurchase"].forEach(function(id){
+  ["bcTotalCostPurchase","bcYieldPurchase","bcSellingPricePurchase","bcBatchCountPurchase"].forEach(function(id){
     document.getElementById(id).addEventListener("input", updateBatchCalcPurchase);
   });
 
   document.getElementById("bcApplyBtnPurchase").addEventListener("click", function(){
-    var result = computeBatchCalc("bcTotalCostPurchase", "bcYieldPurchase", "bcSellingPricePurchase", "bcResultPurchase");
+    var result = computeBatchCalc("bcTotalCostPurchase", "bcYieldPurchase", "bcSellingPricePurchase", "bcResultPurchase", "bcBatchCountPurchase");
     if(!result){ toast("Enter the batch cost and units produced first."); return; }
 
-    document.getElementById("purchaseQty").value = result.yieldQty;
+    document.getElementById("purchaseQty").value = result.totalUnits;
     document.getElementById("purchaseCost").value = result.costPerUnit.toFixed(2);
 
     var itemId = document.getElementById("purchaseItem").value;
