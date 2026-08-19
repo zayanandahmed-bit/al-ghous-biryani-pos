@@ -1084,11 +1084,11 @@ $$;
 
 grant execute on function get_daily_report_agb(date) to anon;
 
--- ============== get_winback_candidates_agb: quiet-but-not-lost customers ==============
--- For a weekly n8n job: customers whose most recent order (identified by
--- phone, since that's only ever collected on delivery orders) falls in a
--- "gone quiet" window -- not so recent they're still obviously active, not
--- so old they've probably moved on for good. Defaults to 10-30 days.
+-- ============== get_winback_candidates_agb: every customer with a phone on file ==============
+-- For a weekly n8n job: every distinct customer who's ever given a phone
+-- number on an order, no matter how recently they last ordered. Params kept
+-- for backward compatibility with the existing n8n workflow call, but no
+-- longer filter anything.
 
 create or replace function get_winback_candidates_agb(p_days_since_min integer default 10, p_days_since_max integer default 30)
 returns jsonb
@@ -1110,7 +1110,6 @@ begin
       where phone is not null and phone <> ''
       order by phone, date desc
     ) t
-    where (current_date - last_order_date) between p_days_since_min and p_days_since_max
   ), '[]'::jsonb);
 end;
 $$;

@@ -72,7 +72,7 @@
     },
     {
       "parameters": {
-        "jsCode": "const c = $input.first().json;\n\nconst daysSince = c.daysSince;\nconst name = c.customer && c.customer !== 'Walk-in customer' ? c.customer : 'there';\n\nconst text = `👋 *We miss you at AL GHOUS BIRYANI!*\n\nHi ${name}, it's been ${daysSince} days since your last order with us. We've still got your favorite biryani fresh and ready today 🍛\n\nMessage us anytime to order — we'd love to have you back!`;\n\nreturn [{ json: { phone: c.phone, message: text } }];\n"
+        "jsCode": "const c = $input.first().json;\n\nconst daysSince = c.daysSince;\nconst name = c.customer && c.customer !== 'Walk-in customer' ? c.customer : 'there';\n\n// Goes to every phone on file each run now, not just quiet customers, so the\n// \"since your last order\" line needs to make sense whether that was today\n// or a month ago.\nconst sinceLine = daysSince <= 0\n  ? \"Thanks for ordering with us!\"\n  : daysSince === 1\n    ? \"It's been a day since your last order with us.\"\n    : `It's been ${daysSince} days since your last order with us.`;\n\nconst text = `👋 *AL GHOUS BIRYANI*\n\nHi ${name}, ${sinceLine} We've got fresh biryani ready for you today 🍛\n\nMessage us anytime to order!`;\n\nreturn [{ json: { phone: c.phone, message: text } }];\n"
       },
       "id": "c3c3c3c3-0004-4000-8000-000000000004",
       "name": "Build win-back message",
