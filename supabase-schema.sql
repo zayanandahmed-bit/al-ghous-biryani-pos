@@ -997,6 +997,7 @@ begin
     'cardSales', (select coalesce(sum(grand),0) from sales_agb where date >= v_start and date < v_end and payment = 'Card'),
     'walletSales', (select coalesce(sum(grand),0) from sales_agb where date >= v_start and date < v_end and payment = 'Mobile Wallet'),
     'creditSales', (select coalesce(sum(grand),0) from sales_agb where date >= v_start and date < v_end and payment = 'Credit (Udhaar)'),
+    'deliverySales', (select coalesce(sum(grand),0) from sales_agb where date >= v_start and date < v_end and payment = 'WhatsApp/Delivery'),
     'refundsCount', (select count(*) from refunds_agb where date >= v_start and date < v_end),
     'refundsTotal', (select coalesce(sum(total),0) from refunds_agb where date >= v_start and date < v_end),
     'topItems', coalesce((
