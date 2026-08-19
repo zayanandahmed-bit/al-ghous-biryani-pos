@@ -1669,19 +1669,14 @@
     var target = normalizePakPhone(sale.phone);
     if(!target) return;
 
-    fetch(WHATSAPP_API_URL + "/message/sendButtons/" + encodeURIComponent(WHATSAPP_INSTANCE), {
+    fetch(WHATSAPP_API_URL + "/message/sendPoll/" + encodeURIComponent(WHATSAPP_INSTANCE), {
       method: "POST",
       headers: { "Content-Type": "application/json", "apikey": WHATSAPP_API_KEY },
       body: JSON.stringify({
         number: target,
-        title: "How was your order?",
-        description: "We'd love your feedback on today's biryani 🍛",
-        footer: state.settings.storeName || "AL GHOUS BIRYANI",
-        buttons: [
-          { type: "reply", displayText: "⭐⭐⭐⭐⭐ Excellent", id: "rate_5_" + sale.id },
-          { type: "reply", displayText: "⭐⭐⭐ Okay", id: "rate_3_" + sale.id },
-          { type: "reply", displayText: "⭐ Not Great", id: "rate_1_" + sale.id }
-        ]
+        name: "How was your order today?",
+        selectableCount: 1,
+        values: ["⭐⭐⭐⭐⭐ Excellent", "⭐⭐⭐ Okay", "⭐ Not Great"]
       })
     }).catch(function(err){
       console.error("WhatsApp rating request failed:", err);
