@@ -481,7 +481,7 @@
           <button type="button" class="btn secondary small" id="toggleBatchCalcBtn" data-i18n="batchCostCalculator">🧮 Batch Cost Calculator</button>
         </div>
         <div id="batchCalcBox" style="display:none;margin-top:10px;padding:12px;border:1px solid var(--border);border-radius:8px;background:var(--panel-alt,rgba(0,0,0,0.02));">
-          <p class="hint" style="margin-top:0;" data-i18n="batchCalcHint">Enter what you paid for the whole batch and how many units it makes — this works out cost per unit and a suggested selling price, without touching stock.</p>
+          <p class="hint" style="margin-top:0;" data-i18n="batchCalcHint">Enter what you paid for the whole batch, how many units it makes, and the price you'll sell each for — this works out your cost and profit per unit, without touching stock.</p>
           <div class="grid grid-3">
             <div>
               <label data-i18n="totalBatchCost">Total Batch Cost</label>
@@ -492,8 +492,8 @@
               <input type="number" id="bcYield" step="1" min="1" placeholder="e.g. 60">
             </div>
             <div>
-              <label data-i18n="targetMarginPct">Target Margin (%)</label>
-              <input type="number" id="bcMargin" step="1" min="0" max="95" value="40">
+              <label data-i18n="sellingPrice">Selling Price (per unit)</label>
+              <input type="number" id="bcSellingPrice" step="0.01" min="0" placeholder="0.00">
             </div>
           </div>
           <div id="bcResult" style="margin-top:10px;font-size:13px;"></div>
@@ -2029,7 +2029,7 @@
     quickPick: "فوری انتخاب", quickPickCheckbox: "بلنگ میں فوری انتخاب کے بٹن کے طور پر دکھائیں",
     batchCostCalculator: "🧮 بیچ لاگت کیلکولیٹر",
     batchCalcHint: "پورے بیچ کی قیمت اور اس سے بننے والی مقدار درج کریں — یہ فی یونٹ لاگت اور تجویز کردہ قیمت نکالے گا، اسٹاک کو چھوئے بغیر۔",
-    totalBatchCost: "کل بیچ لاگت", unitsProduced: "پیدا شدہ یونٹس", targetMarginPct: "مطلوبہ منافع (%)",
+    totalBatchCost: "کل بیچ لاگت", unitsProduced: "پیدا شدہ یونٹس", sellingPrice: "فروخت کی قیمت (فی یونٹ)",
     applyToCostPrice: "اوپر لاگت اور قیمت میں لاگو کریں",
     quickPickOn: "فوری انتخاب: آن", quickPickOff: "فوری انتخاب: آف", left: "باقی",
     whatsappDelivery: "واٹس ایپ / ڈیلیوری", phoneOptional: "فون (اختیاری)", addressNotes: "پتہ / نوٹس",
@@ -2381,7 +2381,7 @@
   function updateBatchCalc(){
     var totalCost = parseFloat(document.getElementById("bcTotalCost").value);
     var yieldQty = parseFloat(document.getElementById("bcYield").value);
-    var marginPct = parseFloat(document.getElementById("bcMargin").value);
+    var sellingPrice = parseFloat(document.getElementById("bcSellingPrice").value);
     var resultEl = document.getElementById("bcResult");
 
     if(isNaN(totalCost) || isNaN(yieldQty) || yieldQty <= 0){
@@ -2389,33 +2389,33 @@
       return;
     }
     var costPerUnit = totalCost / yieldQty;
-    if(isNaN(marginPct) || marginPct < 0 || marginPct >= 100){
-      resultEl.innerHTML = '<span style="color:var(--muted);">' + t("bcCostPerUnitOnly", "Cost per unit") + ': <b>' + money(costPerUnit) + '</b> — ' + t("bcEnterValidMargin", "enter a margin between 0-95% for a suggested price.") + '</span>';
+    if(isNaN(sellingPrice) || sellingPrice <= 0){
+      resultEl.innerHTML = '<span style="color:var(--muted);">' + t("bcCostPerUnitOnly", "Cost per unit") + ': <b>' + money(costPerUnit) + '</b> — ' + t("bcEnterSellingPrice", "enter a selling price to see your profit.") + '</span>';
       return;
     }
-    var suggestedPrice = costPerUnit / (1 - marginPct/100);
-    var profitPerUnit = suggestedPrice - costPerUnit;
+    var profitPerUnit = sellingPrice - costPerUnit;
+    var marginPct = sellingPrice > 0 ? (profitPerUnit / sellingPrice * 100) : 0;
     resultEl.innerHTML =
       '<div>' + t("bcCostPerUnit", "Cost per unit") + ': <b>' + money(costPerUnit) + '</b></div>' +
-      '<div>' + t("bcSuggestedPrice", "Suggested price") + ': <b style="color:var(--accent-green,#0a7a2f);">' + money(suggestedPrice) + '</b></div>' +
-      '<div>' + t("bcProfitPerUnit", "Profit per unit") + ': <b>' + money(profitPerUnit) + '</b></div>';
+      '<div>' + t("bcProfitPerUnit", "Profit per unit") + ': <b style="color:' + (profitPerUnit >= 0 ? 'var(--accent-green,#0a7a2f)' : '#b00020') + ';">' + money(profitPerUnit) + '</b></div>' +
+      '<div>' + t("bcMarginResult", "Margin") + ': <b>' + marginPct.toFixed(1) + '%</b></div>';
   }
 
-  ["bcTotalCost","bcYield","bcMargin"].forEach(function(id){
+  ["bcTotalCost","bcYield","bcSellingPrice"].forEach(function(id){
     document.getElementById(id).addEventListener("input", updateBatchCalc);
   });
 
   document.getElementById("bcApplyBtn").addEventListener("click", function(){
     var totalCost = parseFloat(document.getElementById("bcTotalCost").value);
     var yieldQty = parseFloat(document.getElementById("bcYield").value);
-    var marginPct = parseFloat(document.getElementById("bcMargin").value);
+    var sellingPrice = parseFloat(document.getElementById("bcSellingPrice").value);
     if(isNaN(totalCost) || isNaN(yieldQty) || yieldQty <= 0){ toast("Enter the batch cost and units produced first."); return; }
     var costPerUnit = totalCost / yieldQty;
     document.getElementById("itemCost").value = costPerUnit.toFixed(2);
-    if(!isNaN(marginPct) && marginPct >= 0 && marginPct < 100){
-      document.getElementById("itemPrice").value = (costPerUnit / (1 - marginPct/100)).toFixed(2);
+    if(!isNaN(sellingPrice) && sellingPrice > 0){
+      document.getElementById("itemPrice").value = sellingPrice.toFixed(2);
     }
-    toast("Applied to Buying Price" + (!isNaN(marginPct) && marginPct < 100 ? " and Price" : "") + " above.");
+    toast("Applied to Buying Price" + (!isNaN(sellingPrice) && sellingPrice > 0 ? " and Price" : "") + " above.");
   });
 
   invForm.addEventListener("submit", function(e){
