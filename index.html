@@ -180,6 +180,7 @@
     <button class="nav-btn" data-view="employees"><span class="nav-icon">🧑‍🍳</span> <span data-i18n="navEmployees">Employees</span></button>
     <button class="nav-btn" data-view="sales"><span class="nav-icon">📈</span> <span data-i18n="navSales">Sales History</span></button>
     <button class="nav-btn" data-view="financials"><span class="nav-icon">💰</span> <span data-i18n="navFinancials">Financials</span></button>
+    <button class="nav-btn" data-view="reviews"><span class="nav-icon">⭐</span> <span data-i18n="navReviews">Reviews</span></button>
     <button class="nav-btn" data-view="settings"><span class="nav-icon">⚙️</span> <span data-i18n="navSettings">Settings</span></button>
   </nav>
   <div class="sidebar-foot">
@@ -865,6 +866,24 @@
         <tbody id="finSalariesBody"></tbody>
       </table>
       <div id="finSalariesEmpty" class="empty" style="display:none;" data-i18n="noSalariesRange">No salary payments in this range.</div>
+    </div>
+  </div>
+
+  <!-- REVIEWS VIEW -->
+  <div class="view" id="view-reviews">
+    <div class="panel">
+      <div class="flex-between">
+        <h2 data-i18n="customerReviews">Customer Reviews</h2>
+        <button class="btn secondary small" id="refreshReviewsBtn" data-i18n="refresh">🔄 Refresh</button>
+      </div>
+      <p class="hint" data-i18n="reviewsHint">Pulled live from WhatsApp — ratings customers tap after the order-confirmation poll. Each customer's most recent vote is shown if they voted more than once.</p>
+      <div id="reviewsSummary" style="margin:14px 0;"></div>
+      <table>
+        <thead><tr><th data-i18n="customer">Customer</th><th data-i18n="phoneOptional">Phone</th><th data-i18n="rating">Rating</th><th data-i18n="dateTime">Date/Time</th></tr></thead>
+        <tbody id="reviewsBody"></tbody>
+      </table>
+      <div id="reviewsEmpty" class="empty" style="display:none;" data-i18n="noReviewsYet">No reviews yet — they'll show up here as customers vote on the rating poll.</div>
+      <div id="reviewsLoading" style="display:none;color:var(--muted);padding:12px 0;" data-i18n="loadingReviews">Loading reviews from WhatsApp…</div>
     </div>
   </div>
 
@@ -1683,6 +1702,90 @@
     });
   }
 
+  // ================= REVIEWS =================
+  // Reads poll votes straight from Evolution API's own message store --
+  // it already decrypts them server-side, no webhook/database needed.
+  // Rebuilt fresh every time the tab opens (or Refresh is clicked); nothing
+  // here is persisted locally, so it always reflects the real WhatsApp state.
+  var RATING_VALUES = { "⭐⭐⭐⭐⭐ Excellent": 5, "⭐⭐⭐ Okay": 3, "⭐ Not Great": 1 };
+
+  function renderReviews(){
+    var body = document.getElementById("reviewsBody");
+    var empty = document.getElementById("reviewsEmpty");
+    var loading = document.getElementById("reviewsLoading");
+    var summary = document.getElementById("reviewsSummary");
+    var table = body.closest("table");
+
+    table.style.display = "none";
+    empty.style.display = "none";
+    loading.style.display = "block";
+    summary.innerHTML = "";
+
+    fetch(WHATSAPP_API_URL + "/chat/findMessages/" + encodeURIComponent(WHATSAPP_INSTANCE), {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "apikey": WHATSAPP_API_KEY },
+      body: JSON.stringify({ where: { messageType: "pollUpdateMessage" }, limit: 500 })
+    }).then(function(r){ return r.json(); })
+      .then(function(data){
+        loading.style.display = "none";
+        var records = (data.messages && data.messages.records) || [];
+
+        // One vote per (voter, poll) -- WhatsApp lets someone change their
+        // vote, which sends another pollUpdateMessage, so keep only the
+        // most recent one per pair.
+        var latestByKey = {};
+        records.forEach(function(m){
+          var vote = m.message && m.message.pollUpdateMessage && m.message.pollUpdateMessage.vote;
+          var pollKey = m.message && m.message.pollUpdateMessage && m.message.pollUpdateMessage.pollCreationMessageKey;
+          if(!vote || !vote.selectedOptions || !vote.selectedOptions.length || !pollKey) return;
+          var phone = ((m.key && (m.key.remoteJidAlt || m.key.remoteJid)) || "").split("@")[0];
+          var dedupeKey = phone + "|" + pollKey.id;
+          var ts = m.messageTimestamp || 0;
+          if(!latestByKey[dedupeKey] || ts > latestByKey[dedupeKey].ts){
+            latestByKey[dedupeKey] = {
+              ts: ts,
+              phone: phone,
+              customer: (m.pushName || "").trim() || "Unknown",
+              rating: vote.selectedOptions[0]
+            };
+          }
+        });
+
+        var reviews = Object.keys(latestByKey).map(function(k){ return latestByKey[k]; })
+          .sort(function(a,b){ return b.ts - a.ts; });
+
+        if(reviews.length === 0){
+          table.style.display = "none";
+          empty.style.display = "block";
+          return;
+        }
+
+        table.style.display = "";
+        var withValue = reviews.filter(function(r){ return RATING_VALUES[r.rating] != null; });
+        if(withValue.length){
+          var avg = withValue.reduce(function(s,r){ return s + RATING_VALUES[r.rating]; }, 0) / withValue.length;
+          summary.innerHTML = '<div style="font-size:20px;font-weight:700;">' + avg.toFixed(1) + ' / 5 <span style="font-size:13px;color:var(--muted);font-weight:normal;">(' + reviews.length + ' ' + t("reviews", "reviews") + ')</span></div>';
+        }
+
+        body.innerHTML = reviews.map(function(r){
+          var d = new Date(r.ts * 1000);
+          return "<tr>" +
+            "<td>" + escapeHtml(r.customer) + "</td>" +
+            "<td>" + escapeHtml(r.phone) + "</td>" +
+            "<td>" + escapeHtml(r.rating) + "</td>" +
+            "<td>" + d.toLocaleString() + "</td>" +
+          "</tr>";
+        }).join("");
+      }).catch(function(err){
+        loading.style.display = "none";
+        empty.style.display = "block";
+        empty.textContent = "Couldn't load reviews: " + err.message;
+        console.error("Reviews fetch failed:", err);
+      });
+  }
+
+  document.getElementById("refreshReviewsBtn").addEventListener("click", renderReviews);
+
   function pushRefundInstant(refund){
     pendingQueue.refunds.push(refund);
     savePendingQueue();
@@ -2073,12 +2176,17 @@
     confirmDelivery: "کنفرم کریں اور سیل درج کریں",
     posSubtitle: "پوائنٹ آف سیل",
     navDashboard: "ڈیش بورڈ", navBilling: "بلنگ", navInventory: "انوینٹری", navItemDatabase: "آئٹم ڈیٹا بیس",
-    navPurchases: "خریداری", navCustomers: "گاہک (ادھار)", navSales: "فروخت کی تاریخ", navFinancials: "مالیات", navSettings: "سیٹنگز",
+    navPurchases: "خریداری", navCustomers: "گاہک (ادھار)", navSales: "فروخت کی تاریخ", navFinancials: "مالیات", navReviews: "جائزے", navSettings: "سیٹنگز",
     dashboardSub: "آپ کی دکان کی کارکردگی کا خلاصہ", billingSub: "آئٹم اسکین یا تلاش کر کے سیل بنائیں",
     inventorySub: "آئٹمز اور کیٹیگریز کا انتظام کریں", itemCatalogSub: "پہلے سے بنی پروڈکٹ فہرست — اسٹاک کرتے وقت انوینٹری میں شامل کریں",
     purchasesSub: "سپلائرز اور اسٹاک ان کے ریکارڈ، رسید کے ساتھ", customersSub: "گاہکوں کے ادھار بیلنس اور ادائیگیاں دیکھیں",
     salesSub: "پرانی رسیدیں دیکھیں اور دوبارہ پرنٹ کریں", financialsSub: "آمدنی بمقابلہ اخراجات، اور خالص منافع",
+    reviewsSub: "واٹس ایپ کے ذریعے موصول گاہکوں کی درجہ بندی",
     settingsSub: "دکان کی معلومات، ڈیفالٹس، اور ڈیٹا کا انتظام",
+    customerReviews: "گاہکوں کے جائزے", refresh: "🔄 ریفریش کریں",
+    reviewsHint: "واٹس ایپ سے براہ راست — آرڈر کی تصدیق کے بعد پول پر گاہک کا ٹیپ کردہ درجہ۔ اگر کسی نے ایک سے زیادہ بار ووٹ دیا تو تازہ ترین دکھایا جائے گا۔",
+    rating: "درجہ بندی", noReviewsYet: "ابھی تک کوئی جائزہ نہیں — جیسے ہی گاہک ووٹ دیں گے یہاں نظر آئیں گے۔",
+    loadingReviews: "واٹس ایپ سے جائزے لوڈ ہو رہے ہیں…", reviews: "جائزے",
     today: "آج", thisWeek: "اس ہفتے", thisMonth: "اس مہینے", allTime: "تمام وقت", customRange: "اپنی مرضی کی مدت",
     downloadDailyReport: "📄 روزانہ رپورٹ ڈاؤن لوڈ کریں (PDF)", from: "سے", to: "تک", apply: "لاگو کریں",
     revenue: "آمدنی", sales: "فروخت", lowStockItems: "کم اسٹاک آئٹمز", outOfStock: "ختم شدہ اسٹاک",
@@ -2240,6 +2348,7 @@
     employees: { title: "Employees", sub: "Staff roster and monthly salary payments", titleKey: "navEmployees", subKey: "employeesSub" },
     sales: { title: "Sales History", sub: "Browse and reprint past receipts", titleKey: "navSales", subKey: "salesSub" },
     financials: { title: "Financials", sub: "Money in vs money out, and your net profit", titleKey: "navFinancials", subKey: "financialsSub" },
+    reviews: { title: "Reviews", sub: "Customer ratings collected via WhatsApp", titleKey: "navReviews", subKey: "reviewsSub" },
     settings: { title: "Settings", sub: "Store info, defaults, and data management", titleKey: "navSettings", subKey: "settingsSub" }
   };
 
@@ -2260,6 +2369,7 @@
       if(btn.dataset.view === "employees") renderEmployees();
       if(btn.dataset.view === "sales") loadSalesHistoryRange();
       if(btn.dataset.view === "financials") loadFinancialsRange();
+      if(btn.dataset.view === "reviews") renderReviews();
       if(btn.dataset.view === "billing") document.getElementById("scanInput").focus();
       if(btn.dataset.view === "dashboard") loadDashboardRange();
       if(btn.dataset.view === "settings"){ loadSettingsForm(); renderShiftHistory(); }
