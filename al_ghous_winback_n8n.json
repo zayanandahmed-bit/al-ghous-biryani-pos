@@ -7,13 +7,13 @@
           "interval": [
             {
               "field": "cronExpression",
-              "expression": "0 10 * * 1"
+              "expression": "0 14 * * 1"
             }
           ]
         }
       },
       "id": "c3c3c3c3-0001-4000-8000-000000000001",
-      "name": "Every Monday 10am",
+      "name": "Every Monday 2pm",
       "type": "n8n-nodes-base.scheduleTrigger",
       "typeVersion": 1.2,
       "position": [
@@ -130,7 +130,7 @@
     }
   ],
   "connections": {
-    "Every Monday 10am": {
+    "Every Monday 2pm": {
       "main": [
         [
           {
