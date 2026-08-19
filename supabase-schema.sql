@@ -131,6 +131,7 @@ create table if not exists sales_agb (
   customer text,
   cashier text,
   payment text,
+  order_type text default 'Walk-in',
   cash numeric,
   subtotal numeric,
   discount_pct numeric,
@@ -139,6 +140,9 @@ create table if not exists sales_agb (
   tax_amt numeric,
   grand numeric
 );
+
+-- Additive: older databases created before order_type existed won't have it.
+alter table sales_agb add column if not exists order_type text default 'Walk-in';
 
 create table if not exists sale_lines_agb (
   sale_id text,
@@ -497,8 +501,9 @@ begin
     truncate item_sales_totals_agb;
     update sales_overall_totals_agb set count = 0, revenue = 0 where key = 'all';
 
-    insert into sales_agb (id, receipt_no, date, customer, cashier, payment, cash, subtotal, discount_pct, discount_amt, tax_pct, tax_amt, grand)
+    insert into sales_agb (id, receipt_no, date, customer, cashier, payment, order_type, cash, subtotal, discount_pct, discount_amt, tax_pct, tax_amt, grand)
     select x->>'id', (x->>'receiptNo')::integer, (x->>'date')::timestamptz, x->>'customer', x->>'cashier', x->>'payment',
+           coalesce(x->>'orderType', 'Walk-in'),
            (x->>'cash')::numeric, (x->>'subtotal')::numeric, (x->>'discountPct')::numeric, (x->>'discountAmt')::numeric,
            (x->>'taxPct')::numeric, (x->>'taxAmt')::numeric, (x->>'grand')::numeric
     from jsonb_array_elements(payload->'sales') x;
@@ -846,15 +851,16 @@ security definer
 set search_path = public
 as $$
 begin
-  insert into sales_agb (id, receipt_no, date, customer, cashier, payment, cash, subtotal, discount_pct, discount_amt, tax_pct, tax_amt, grand)
+  insert into sales_agb (id, receipt_no, date, customer, cashier, payment, order_type, cash, subtotal, discount_pct, discount_amt, tax_pct, tax_amt, grand)
   values (
     sale->>'id', (sale->>'receiptNo')::integer, (sale->>'date')::timestamptz, sale->>'customer', sale->>'cashier', sale->>'payment',
+    coalesce(sale->>'orderType', 'Walk-in'),
     (sale->>'cash')::numeric, (sale->>'subtotal')::numeric, (sale->>'discountPct')::numeric, (sale->>'discountAmt')::numeric,
     (sale->>'taxPct')::numeric, (sale->>'taxAmt')::numeric, (sale->>'grand')::numeric
   )
   on conflict (id) do update set
     receipt_no = excluded.receipt_no, date = excluded.date, customer = excluded.customer,
-    cashier = excluded.cashier, payment = excluded.payment, cash = excluded.cash,
+    cashier = excluded.cashier, payment = excluded.payment, order_type = excluded.order_type, cash = excluded.cash,
     subtotal = excluded.subtotal, discount_pct = excluded.discount_pct, discount_amt = excluded.discount_amt,
     tax_pct = excluded.tax_pct, tax_amt = excluded.tax_amt, grand = excluded.grand;
 
@@ -886,8 +892,9 @@ security definer
 set search_path = public
 as $$
 begin
-  insert into sales_agb (id, receipt_no, date, customer, cashier, payment, cash, subtotal, discount_pct, discount_amt, tax_pct, tax_amt, grand)
+  insert into sales_agb (id, receipt_no, date, customer, cashier, payment, order_type, cash, subtotal, discount_pct, discount_amt, tax_pct, tax_amt, grand)
   select x->>'id', (x->>'receiptNo')::integer, (x->>'date')::timestamptz, x->>'customer', x->>'cashier', x->>'payment',
+         coalesce(x->>'orderType', 'Walk-in'),
          (x->>'cash')::numeric, (x->>'subtotal')::numeric, (x->>'discountPct')::numeric, (x->>'discountAmt')::numeric,
          (x->>'taxPct')::numeric, (x->>'taxAmt')::numeric, (x->>'grand')::numeric
   from jsonb_array_elements(sales) x
@@ -997,7 +1004,7 @@ begin
     'cardSales', (select coalesce(sum(grand),0) from sales_agb where date >= v_start and date < v_end and payment = 'Card'),
     'walletSales', (select coalesce(sum(grand),0) from sales_agb where date >= v_start and date < v_end and payment = 'Mobile Wallet'),
     'creditSales', (select coalesce(sum(grand),0) from sales_agb where date >= v_start and date < v_end and payment = 'Credit (Udhaar)'),
-    'deliverySales', (select coalesce(sum(grand),0) from sales_agb where date >= v_start and date < v_end and payment = 'WhatsApp/Delivery'),
+    'deliverySales', (select coalesce(sum(grand),0) from sales_agb where date >= v_start and date < v_end and order_type = 'Delivery'),
     'refundsCount', (select count(*) from refunds_agb where date >= v_start and date < v_end),
     'refundsTotal', (select coalesce(sum(total),0) from refunds_agb where date >= v_start and date < v_end),
     -- Cost of what was actually SOLD today, priced at each item's current

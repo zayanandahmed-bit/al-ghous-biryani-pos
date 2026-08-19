@@ -368,13 +368,19 @@
           <input id="customerName" placeholder="Walk-in customer" data-i18n-placeholder="walkInCustomer">
         </div>
         <div style="margin-top:14px;">
+          <label data-i18n="orderType">Order Type</label>
+          <select id="orderType">
+            <option value="Walk-in" data-i18n="walkIn">Walk-in</option>
+            <option value="Delivery" data-i18n="delivery">Delivery (WhatsApp)</option>
+          </select>
+        </div>
+        <div style="margin-top:14px;">
           <label data-i18n="paymentMethod">Payment Method</label>
           <select id="paymentMethod">
             <option value="Cash" data-i18n="cash">Cash</option>
             <option value="Card" data-i18n="card">Card</option>
-            <option value="Mobile Wallet" data-i18n="mobileWallet">Mobile Wallet</option>
+            <option value="Mobile Wallet" data-i18n="mobileWallet">EasyPaisa</option>
             <option value="Credit (Udhaar)" data-i18n="creditUdhaar">Credit (Udhaar)</option>
-            <option value="WhatsApp/Delivery" data-i18n="whatsappDelivery">WhatsApp/Delivery</option>
           </select>
         </div>
         <div style="margin-top:14px;display:none;" id="creditCustomerBox">
@@ -1513,6 +1519,7 @@
       itemLines + "\n\n" +
       "Total: *" + money(sale.grand) + "*\n" +
       "Payment: " + sale.payment + "\n" +
+      "Type: " + (sale.orderType || "Walk-in") + "\n" +
       "Customer: " + (sale.customer || "Walk-in customer") +
       (sale.phone ? "\nPhone: " + sale.phone : "") +
       (sale.address ? "\nAddress: " + sale.address : "") + "\n" +
@@ -1930,7 +1937,8 @@
     price: "قیمت", qty: "مقدار", subtotal: "ذیلی کل", cartEmpty: "کارٹ خالی ہے — شروع کرنے کے لیے کوئی آئٹم اسکین یا تلاش کریں",
     checkout: "چیک آؤٹ", discountPct: "رعایت (%)", taxPct: "ٹیکس (%)", discount: "رعایت", tax: "ٹیکس",
     customerNameOptional: "گاہک کا نام (اختیاری)", walkInCustomer: "عام گاہک", paymentMethod: "ادائیگی کا طریقہ",
-    cash: "نقد", card: "کارڈ", mobileWallet: "موبائل والیٹ", creditUdhaar: "ادھار", customerRequired: "گاہک *",
+    cash: "نقد", card: "کارڈ", mobileWallet: "ایزی پیسہ", creditUdhaar: "ادھار", customerRequired: "گاہک *",
+    orderType: "آرڈر کی قسم", walkIn: "واک اِن", delivery: "ڈیلیوری (واٹس ایپ)",
     cashReceived: "موصول شدہ نقدی", completeSale: "سیل مکمل کریں اور رسید پرنٹ کریں",
     manageCategories: "کیٹیگریز کا انتظام کریں", newCategoryName: "نئی کیٹیگری کا نام", addCategory: "کیٹیگری شامل کریں",
     scanInventorySheet: "انوینٹری شیٹ اسکین کریں", scanInventorySheetHint: "پرنٹ شدہ فہرست کی تصویر لیں یا اپلوڈ کریں — شامل کرنے سے پہلے آپ سب کچھ چیک اور درست کر سکیں گے۔",
@@ -4092,7 +4100,8 @@
       phone: order.phone || "",
       address: order.notes || "",
       cashier: order.cashier || currentCashierName(),
-      payment: "WhatsApp/Delivery",
+      payment: order.paymentMethod || "Cash",
+      orderType: "Delivery",
       cash: totals.grand,
       lines: lines,
       subtotal: totals.subtotal,
@@ -4245,9 +4254,12 @@
 
   document.getElementById("paymentMethod").addEventListener("change", function(){
     var isCredit = this.value === "Credit (Udhaar)";
-    var isDelivery = this.value === "WhatsApp/Delivery";
     document.getElementById("creditCustomerBox").style.display = isCredit ? "block" : "none";
     if(isCredit) populateCreditCustomerSelect();
+  });
+
+  document.getElementById("orderType").addEventListener("change", function(){
+    var isDelivery = this.value === "Delivery";
     document.getElementById("deliveryDetailsBox").style.display = isDelivery ? "block" : "none";
     document.getElementById("cashReceivedBox").style.display = isDelivery ? "none" : "block";
     document.getElementById("checkoutBtn").textContent = isDelivery ? t("queueDelivery", "Send to Pending Deliveries") : t("completeSale", "Complete Sale & Print Receipt");
@@ -4256,11 +4268,12 @@
   document.getElementById("checkoutBtn").addEventListener("click", function(){
     if(state.cart.length === 0){ toast("Cart is empty."); return; }
     var payMethod = document.getElementById("paymentMethod").value;
+    var orderType = document.getElementById("orderType").value;
 
     // Delivery orders aren't logged as a sale yet — the order is queued,
     // the kitchen can start on it, and nothing hits inventory/revenue until
     // the rider is back with the money and it's confirmed from the queue.
-    if(payMethod === "WhatsApp/Delivery"){
+    if(orderType === "Delivery"){
       var deliveryOrder = {
         id: uid(),
         date: new Date().toISOString(),
@@ -4270,7 +4283,8 @@
         discount: document.getElementById("discountInput").value,
         tax: document.getElementById("taxInput").value,
         notes: document.getElementById("deliveryNotes").value.trim(),
-        cashier: currentCashierName()
+        cashier: currentCashierName(),
+        paymentMethod: payMethod
       };
       state.pendingDeliveries.push(deliveryOrder);
       savePendingDeliveries();
@@ -4280,8 +4294,8 @@
       document.getElementById("deliveryNotes").value = "";
       document.getElementById("discountInput").value = state.settings.defaultDiscount;
       document.getElementById("taxInput").value = state.settings.defaultTax;
-      document.getElementById("paymentMethod").value = "Cash";
-      document.getElementById("paymentMethod").dispatchEvent(new Event("change"));
+      document.getElementById("orderType").value = "Walk-in";
+      document.getElementById("orderType").dispatchEvent(new Event("change"));
       renderCart();
       renderPendingDeliveries();
       showDeliverySlip(deliveryOrder);
@@ -4321,6 +4335,7 @@
       customerId: creditCustomer ? creditCustomer.id : null,
       cashier: currentCashierName(),
       payment: payMethod,
+      orderType: "Walk-in",
       cash: isNaN(cash) ? null : cash,
       lines: lines,
       subtotal: totals.subtotal,
@@ -4542,7 +4557,7 @@
     if(totals.taxAmt > 0) html += '<div class="rline"><span>Tax ('+totals.taxPct+'%)</span><span>+'+money(totals.taxAmt)+'</span></div>';
     html += '<div class="rline" style="font-weight:bold;font-size:14px;"><span>TOTAL</span><span>'+money(totals.grand)+'</span></div>';
     html += "<hr>";
-    html += '<div class="rline"><span>Payment</span><span>Cash on Delivery</span></div>';
+    html += '<div class="rline"><span>Payment</span><span>'+escapeHtml(order.paymentMethod || "Cash")+' on Delivery</span></div>';
     html += "<hr>";
     html += '<div style="text-align:center;">' + escapeHtml(s.receiptFooter || "Thank you!") + '</div>';
 
