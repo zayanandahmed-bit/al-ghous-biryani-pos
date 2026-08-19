@@ -86,8 +86,8 @@
   .empty{color:var(--muted);text-align:center;padding:20px;font-size:14px;}
   .toast{position:fixed;bottom:20px;right:20px;background:#111827;color:#fff;padding:12px 18px;border-radius:8px;font-size:14px;opacity:0;transform:translateY(10px);transition:.25s;pointer-events:none;z-index:999;}
   .toast.show{opacity:1;transform:translateY(0);}
-  #receiptModal,#cameraModal,#proofModal,#cashierModal,#heldSalesModal,#refundModal,#labelModal,#shiftCloseModal,#scanSheetModal,#customerPaymentModal,#employeePaymentModal{display:none;position:fixed;inset:0;background:rgba(0,0,0,.6);align-items:center;justify-content:center;z-index:1000;padding:20px;}
-  #receiptModal.show,#cameraModal.show,#proofModal.show,#cashierModal.show,#heldSalesModal.show,#refundModal.show,#labelModal.show,#shiftCloseModal.show,#scanSheetModal.show,#customerPaymentModal.show,#employeePaymentModal.show{display:flex;}
+  #receiptModal,#cameraModal,#proofModal,#cashierModal,#heldSalesModal,#refundModal,#labelModal,#shiftCloseModal,#scanSheetModal,#customerPaymentModal,#employeePaymentModal,#confirmDeliveryModal{display:none;position:fixed;inset:0;background:rgba(0,0,0,.6);align-items:center;justify-content:center;z-index:1000;padding:20px;}
+  #receiptModal.show,#cameraModal.show,#proofModal.show,#cashierModal.show,#heldSalesModal.show,#refundModal.show,#labelModal.show,#shiftCloseModal.show,#scanSheetModal.show,#customerPaymentModal.show,#employeePaymentModal.show,#confirmDeliveryModal.show{display:flex;}
   .cashier-row,.held-row{display:flex;justify-content:space-between;align-items:center;padding:8px 10px;border:1px solid var(--border);border-radius:6px;margin-bottom:6px;}
   .cashier-row.active{border-color:var(--primary);background:rgba(37,99,235,.08);}
   .receipt-paper{background:#fff;color:#111;width:320px;max-height:85vh;overflow-y:auto;padding:16px;font-family:'Courier New',monospace;font-size:12px;border-radius:4px;}
@@ -395,7 +395,7 @@
           <p class="hint" style="margin-top:6px;" data-i18n="deliveryHint">This sends the order to Pending Deliveries below — nothing is charged or logged as a sale until you confirm it there, once the rider comes back with the payment.</p>
         </div>
         <div style="margin-top:14px;" id="cashReceivedBox">
-          <label data-i18n="cashReceived">Cash Received</label>
+          <label data-i18n="cashReceivedRequired">Cash Received *</label>
           <input type="number" id="cashReceived" placeholder="0.00">
           <div id="changeDue" style="margin-top:6px;font-size:13px;color:var(--muted);"></div>
         </div>
@@ -1070,6 +1070,31 @@
     <div class="modal-actions">
       <button class="btn" id="epSaveBtn" data-i18n="savePayment">Save Payment</button>
       <button class="btn secondary" id="epCancelBtn" data-i18n="cancel">Cancel</button>
+    </div>
+  </div>
+</div>
+
+<div id="confirmDeliveryModal">
+  <div class="panel" style="width:380px;max-width:90vw;">
+    <h2 data-i18n="confirmDeliveryTitle">Confirm Delivery</h2>
+    <input type="hidden" id="cdOrderId">
+    <div style="margin-top:10px;">
+      <label data-i18n="paymentMethodRequired">Payment Method *</label>
+      <select id="cdPaymentMethod">
+        <option value="Cash" data-i18n="cash">Cash</option>
+        <option value="Card" data-i18n="card">Card</option>
+        <option value="Mobile Wallet" data-i18n="mobileWallet">EasyPaisa</option>
+        <option value="Credit (Udhaar)" data-i18n="creditUdhaar">Credit (Udhaar)</option>
+      </select>
+    </div>
+    <div style="margin-top:10px;">
+      <label data-i18n="amountReceivedRequired">Amount Received *</label>
+      <input type="number" id="cdAmountReceived" min="0" step="0.01" required>
+      <div id="cdChangeDue" style="margin-top:6px;font-size:13px;color:var(--muted);"></div>
+    </div>
+    <div class="modal-actions">
+      <button class="btn green" id="cdConfirmBtn" data-i18n="confirmDelivery">Confirm &amp; Log Sale</button>
+      <button class="btn secondary" id="cdCancelBtn" data-i18n="cancel">Cancel</button>
     </div>
   </div>
 </div>
@@ -1939,7 +1964,7 @@
     customerNameOptional: "گاہک کا نام (اختیاری)", walkInCustomer: "عام گاہک", paymentMethod: "ادائیگی کا طریقہ",
     cash: "نقد", card: "کارڈ", mobileWallet: "ایزی پیسہ", creditUdhaar: "ادھار", customerRequired: "گاہک *",
     orderType: "آرڈر کی قسم", walkIn: "واک اِن", delivery: "ڈیلیوری (واٹس ایپ)",
-    cashReceived: "موصول شدہ نقدی", completeSale: "سیل مکمل کریں اور رسید پرنٹ کریں",
+    cashReceived: "موصول شدہ نقدی", cashReceivedRequired: "موصول شدہ نقدی *", completeSale: "سیل مکمل کریں اور رسید پرنٹ کریں",
     manageCategories: "کیٹیگریز کا انتظام کریں", newCategoryName: "نئی کیٹیگری کا نام", addCategory: "کیٹیگری شامل کریں",
     scanInventorySheet: "انوینٹری شیٹ اسکین کریں", scanInventorySheetHint: "پرنٹ شدہ فہرست کی تصویر لیں یا اپلوڈ کریں — شامل کرنے سے پہلے آپ سب کچھ چیک اور درست کر سکیں گے۔",
     scanAPage: "📷 صفحہ اسکین کریں", addNewItem: "نیا آئٹم شامل کریں", itemNameRequired: "آئٹم کا نام *",
@@ -2001,6 +2026,8 @@
     exportBackup: "بیک اپ ایکسپورٹ کریں (.json)", importBackup: "بیک اپ درآمد کریں",
     print: "پرنٹ", close: "بند کریں", switchCashier: "کیشیئر تبدیل کریں", manageCashiersInSettings: "سیٹنگز میں کیشیئرز کا انتظام کریں۔",
     logPayment: "ادائیگی درج کریں", amountReceivedRequired: "موصول شدہ رقم *", dateRequired: "تاریخ *",
+    confirmDeliveryTitle: "ڈیلیوری کی تصدیق کریں", paymentMethodRequired: "ادائیگی کا طریقہ *",
+    totalDue: "کل رقم", changeDue: "واپسی رقم", stillOwed: "باقی رقم",
     savePayment: "ادائیگی محفوظ کریں", cancel: "منسوخ کریں",
     scanModalHint: "ٹائپ شدہ/پرنٹ شدہ فہرستوں کی تصاویر بہترین کام کرتی ہیں۔ شامل کرنے سے پہلے نیچے جائزہ لیں۔",
     chooseOrTakePhoto: "📷 تصویر منتخب کریں یا لیں", reviewDetectedItems: "معلوم شدہ آئٹمز کا جائزہ لیں",
@@ -4044,7 +4071,7 @@
           '</div>' +
           '<div style="white-space:nowrap;">' +
             '<button class="btn secondary small" onclick="POS.printDeliverySlip(\''+o.id+'\')">' + t("receipt", "Receipt") + '</button> ' +
-            '<button class="btn green small" onclick="POS.confirmDelivery(\''+o.id+'\')">' + t("confirmDelivery", "Confirm & Log Sale") + '</button> ' +
+            '<button class="btn green small" onclick="POS.openConfirmDeliveryModal(\''+o.id+'\')">' + t("confirmDelivery", "Confirm & Log Sale") + '</button> ' +
             '<button class="btn danger small" onclick="POS.cancelPendingDelivery(\''+o.id+'\')">' + t("cancel", "Cancel") + '</button>' +
           '</div>' +
         '</div>' +
@@ -4069,10 +4096,57 @@
     return { subtotal: subtotal, discountPct: discountPct, discountAmt: discountAmt, taxPct: taxPct, taxAmt: taxAmt, grand: grand };
   }
 
-  function confirmDelivery(id){
+  // The actual payment method and amount collected are only known once the
+  // rider is back — so instead of logging the sale straight away, this opens
+  // a modal that requires both before confirmDeliveryFromModal() runs.
+  function openConfirmDeliveryModal(id){
     var order = state.pendingDeliveries.find(function(o){ return o.id === id; });
     if(!order) return;
     if(order.cart.length === 0){ toast("This order's cart is empty."); return; }
+
+    for(var i=0;i<order.cart.length;i++){
+      var line = order.cart[i];
+      var item = state.items.find(function(it){ return it.id === line.itemId; });
+      if(!item){ toast("An item in this order no longer exists in Inventory — can't confirm."); return; }
+    }
+
+    var totals = computeCartTotals(order.cart, order.discount, order.tax);
+    document.getElementById("cdOrderId").value = id;
+    document.getElementById("cdPaymentMethod").value = order.paymentMethod || "Cash";
+    document.getElementById("cdAmountReceived").value = "";
+    document.getElementById("cdChangeDue").textContent = t("totalDue", "Total due") + ": " + money(totals.grand);
+    document.getElementById("confirmDeliveryModal").classList.add("show");
+  }
+
+  document.getElementById("cdAmountReceived").addEventListener("input", function(){
+    var id = document.getElementById("cdOrderId").value;
+    var order = state.pendingDeliveries.find(function(o){ return o.id === id; });
+    if(!order) return;
+    var totals = computeCartTotals(order.cart, order.discount, order.tax);
+    var received = parseFloat(this.value);
+    if(isNaN(received)){
+      document.getElementById("cdChangeDue").textContent = t("totalDue", "Total due") + ": " + money(totals.grand);
+      return;
+    }
+    var change = received - totals.grand;
+    document.getElementById("cdChangeDue").textContent = change >= 0
+      ? t("changeDue", "Change due") + ": " + money(change)
+      : t("stillOwed", "Still owed") + ": " + money(-change);
+  });
+
+  document.getElementById("cdCancelBtn").addEventListener("click", function(){
+    document.getElementById("confirmDeliveryModal").classList.remove("show");
+  });
+
+  document.getElementById("cdConfirmBtn").addEventListener("click", function(){
+    var id = document.getElementById("cdOrderId").value;
+    var order = state.pendingDeliveries.find(function(o){ return o.id === id; });
+    if(!order) return;
+
+    var paymentMethod = document.getElementById("cdPaymentMethod").value;
+    var received = parseFloat(document.getElementById("cdAmountReceived").value);
+    if(!paymentMethod){ toast("Select a payment method."); return; }
+    if(isNaN(received)){ toast("Enter the amount received."); return; }
 
     for(var i=0;i<order.cart.length;i++){
       var line = order.cart[i];
@@ -4100,9 +4174,9 @@
       phone: order.phone || "",
       address: order.notes || "",
       cashier: order.cashier || currentCashierName(),
-      payment: order.paymentMethod || "Cash",
+      payment: paymentMethod,
       orderType: "Delivery",
-      cash: totals.grand,
+      cash: received,
       lines: lines,
       subtotal: totals.subtotal,
       discountPct: totals.discountPct,
@@ -4119,11 +4193,12 @@
     state.pendingDeliveries = state.pendingDeliveries.filter(function(o){ return o.id !== id; });
     savePendingDeliveries();
 
+    document.getElementById("confirmDeliveryModal").classList.remove("show");
     showReceipt(sale);
     renderPendingDeliveries();
     renderInventory();
     toast("Delivery confirmed and sale logged.");
-  }
+  });
 
   function printDeliverySlip(id){
     var order = state.pendingDeliveries.find(function(o){ return o.id === id; });
@@ -4306,8 +4381,11 @@
     var totals = updateTotals();
     var cash = parseFloat(document.getElementById("cashReceived").value);
 
-    if(payMethod === "Cash" && (isNaN(cash) || cash < totals.grand)){
-      if(!confirm("Cash received is less than the total, or not entered. Complete sale anyway?")) return;
+    if(payMethod === "Cash"){
+      if(isNaN(cash)){ toast("Enter the cash received amount."); return; }
+      if(cash < totals.grand){
+        if(!confirm("Cash received is less than the total. Complete sale anyway?")) return;
+      }
     }
 
     var creditCustomer = null;
@@ -6094,7 +6172,7 @@
     deleteHeldSale: deleteHeldSale,
     openRefundModal: openRefundModal,
     deleteSale: deleteSale,
-    confirmDelivery: confirmDelivery,
+    openConfirmDeliveryModal: openConfirmDeliveryModal,
     cancelPendingDelivery: cancelPendingDelivery,
     printDeliverySlip: printDeliverySlip,
     updateRefundTotal: updateRefundTotal,
