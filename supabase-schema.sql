@@ -1000,22 +1000,35 @@ begin
     'deliverySales', (select coalesce(sum(grand),0) from sales_agb where date >= v_start and date < v_end and payment = 'WhatsApp/Delivery'),
     'refundsCount', (select count(*) from refunds_agb where date >= v_start and date < v_end),
     'refundsTotal', (select coalesce(sum(total),0) from refunds_agb where date >= v_start and date < v_end),
+    -- Cost of what was actually SOLD today, priced at each item's current
+    -- buying price (items_agb.cost) since sale_lines_agb doesn't snapshot cost
+    -- at sale time -- same approximation the Financials tab already makes.
+    -- This is a sales/profit report, not a full financial statement: it
+    -- deliberately leaves out stock purchases (restocking isn't the same as
+    -- what sold today), expenses, and salaries, which belong in Financials.
+    'costOfGoodsSold', (
+      select coalesce(sum(sl.qty * coalesce(i.cost,0)), 0)
+      from sale_lines_agb sl
+      join sales_agb s on s.id = sl.sale_id
+      left join items_agb i on i.id = sl.item_id
+      where s.date >= v_start and s.date < v_end
+    ),
     'topItems', coalesce((
-      select jsonb_agg(jsonb_build_object('name', item_name, 'qty', qty, 'revenue', revenue) order by qty desc)
+      select jsonb_agg(jsonb_build_object(
+        'name', item_name, 'qty', qty, 'revenue', revenue, 'cost', cost, 'profit', revenue - cost
+      ) order by qty desc)
       from (
-        select sl.item_name, sum(sl.qty) as qty, sum(sl.subtotal) as revenue
+        select sl.item_name, sum(sl.qty) as qty, sum(sl.subtotal) as revenue,
+               sum(sl.qty * coalesce(i.cost,0)) as cost
         from sale_lines_agb sl
         join sales_agb s on s.id = sl.sale_id
+        left join items_agb i on i.id = sl.item_id
         where s.date >= v_start and s.date < v_end
         group by sl.item_name
         order by sum(sl.qty) desc
         limit 10
       ) t
     ), '[]'::jsonb),
-    'purchasesTotal', (select coalesce(sum(total),0) from purchases_agb where date = p_date),
-    'expensesTotal', (select coalesce(sum(amount),0) from expenses_agb where date = p_date),
-    'salariesTotal', (select coalesce(sum(amount),0) from employee_payments_agb where date = p_date),
-    'creditCollected', (select coalesce(sum(amount),0) from customer_payments_agb where date = p_date),
     'lowStockItems', coalesce((
       select jsonb_agg(jsonb_build_object('name', name, 'stock', stock, 'lowStock', low_stock) order by stock asc)
       from items_agb where stock > 0 and stock <= low_stock
