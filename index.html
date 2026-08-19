@@ -364,8 +364,11 @@
           <div class="line grand"><span data-i18n="total">Total</span><span id="totGrand">0.00</span></div>
         </div>
         <div style="margin-top:14px;">
-          <label data-i18n="customerNameOptional">Customer name (optional)</label>
-          <input id="customerName" placeholder="Walk-in customer" data-i18n-placeholder="walkInCustomer">
+          <div class="grid grid-2">
+            <div><label data-i18n="customerNameOptional">Customer name (optional)</label><input id="customerName" placeholder="Walk-in customer" data-i18n-placeholder="walkInCustomer"></div>
+            <div><label data-i18n="phoneOptional">Phone (optional)</label><input id="customerPhone" placeholder="03xx-xxxxxxx"></div>
+          </div>
+          <p class="hint" style="margin-top:6px;" data-i18n="phoneAutofillHint">Recognized numbers auto-fill the customer name.</p>
         </div>
         <div style="margin-top:14px;">
           <label data-i18n="orderType">Order Type</label>
@@ -388,10 +391,7 @@
           <select id="creditCustomerSelect"></select>
         </div>
         <div style="margin-top:14px;display:none;" id="deliveryDetailsBox">
-          <div class="grid grid-2">
-            <div><label data-i18n="phoneOptional">Phone (optional)</label><input id="deliveryPhone" placeholder="03xx-xxxxxxx"></div>
-            <div><label data-i18n="addressNotes">Address / Notes</label><input id="deliveryNotes" placeholder="Optional"></div>
-          </div>
+          <div><label data-i18n="addressNotes">Address / Notes</label><input id="deliveryNotes" placeholder="Optional"></div>
           <p class="hint" style="margin-top:6px;" data-i18n="deliveryHint">This sends the order to Pending Deliveries below — nothing is charged or logged as a sale until you confirm it there, once the rider comes back with the payment.</p>
         </div>
         <div style="margin-top:14px;" id="cashReceivedBox">
@@ -2005,6 +2005,7 @@
     quickPick: "فوری انتخاب", quickPickCheckbox: "بلنگ میں فوری انتخاب کے بٹن کے طور پر دکھائیں",
     quickPickOn: "فوری انتخاب: آن", quickPickOff: "فوری انتخاب: آف", left: "باقی",
     whatsappDelivery: "واٹس ایپ / ڈیلیوری", phoneOptional: "فون (اختیاری)", addressNotes: "پتہ / نوٹس",
+    phoneAutofillHint: "پہچانے گئے نمبر پر گاہک کا نام خودکار طور پر بھر جائے گا۔",
     deliveryHint: "یہ آرڈر نیچے پینڈنگ ڈیلیوریز میں چلا جائے گا — جب تک آپ رائیڈر کی ادائیگی کے بعد اسے کنفرم نہیں کرتے، نہ کچھ چارج ہوگا نہ سیل کے طور پر درج ہوگا۔",
     queueDelivery: "پینڈنگ ڈیلیوریز میں بھیجیں", pendingDeliveries: "پینڈنگ ڈیلیوریز", pending: "زیر التوا",
     confirmDelivery: "کنفرم کریں اور سیل درج کریں",
@@ -4419,6 +4420,26 @@
     document.getElementById("checkoutBtn").textContent = isDelivery ? t("queueDelivery", "Send to Pending Deliveries") : t("completeSale", "Complete Sale & Print Receipt");
   });
 
+  // Looks up whether this phone number matches a previous customer and, if
+  // so, fills in their name -- only when the cashier hasn't already typed
+  // one, so it never overwrites something entered on purpose.
+  document.getElementById("customerPhone").addEventListener("blur", function(){
+    var normalized = normalizePakPhone(this.value.trim());
+    var nameField = document.getElementById("customerName");
+    if(!normalized || nameField.value.trim()) return;
+    if(!cloudReady()) return;
+    fetch(supabaseUrl("find_customer_name_by_phone_agb"), {
+      method: "POST",
+      headers: supabaseHeaders(),
+      body: JSON.stringify({ p_phone: normalized })
+    }).then(function(r){ return r.ok ? r.json() : null; })
+      .then(function(name){
+        if(name && !nameField.value.trim()) nameField.value = name;
+      }).catch(function(err){
+        console.error("Customer name lookup failed:", err);
+      });
+  });
+
   document.getElementById("checkoutBtn").addEventListener("click", function(){
     if(state.cart.length === 0){ toast("Cart is empty."); return; }
     var payMethod = document.getElementById("paymentMethod").value;
@@ -4433,7 +4454,7 @@
         date: new Date().toISOString(),
         cart: state.cart.slice(),
         customer: document.getElementById("customerName").value.trim(),
-        phone: document.getElementById("deliveryPhone").value.trim(),
+        phone: normalizePakPhone(document.getElementById("customerPhone").value.trim()) || "",
         discount: document.getElementById("discountInput").value,
         tax: document.getElementById("taxInput").value,
         notes: document.getElementById("deliveryNotes").value.trim(),
@@ -4445,7 +4466,7 @@
       sendDeliveryConfirmationToCustomer(deliveryOrder);
       state.cart = [];
       document.getElementById("customerName").value = "";
-      document.getElementById("deliveryPhone").value = "";
+      document.getElementById("customerPhone").value = "";
       document.getElementById("deliveryNotes").value = "";
       document.getElementById("discountInput").value = state.settings.defaultDiscount;
       document.getElementById("taxInput").value = state.settings.defaultTax;
@@ -4499,6 +4520,7 @@
       cashier: currentCashierName(),
       payment: payMethod,
       orderType: "Walk-in",
+      phone: normalizePakPhone(document.getElementById("customerPhone").value.trim()) || "",
       cash: isNaN(cash) ? null : cash,
       lines: lines,
       subtotal: totals.subtotal,
@@ -4523,6 +4545,7 @@
 
     state.cart = [];
     document.getElementById("customerName").value = "";
+    document.getElementById("customerPhone").value = "";
     document.getElementById("cashReceived").value = "";
     document.getElementById("discountInput").value = state.settings.defaultDiscount;
     document.getElementById("taxInput").value = state.settings.defaultTax;

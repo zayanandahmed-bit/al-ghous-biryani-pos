@@ -132,6 +132,7 @@ create table if not exists sales_agb (
   cashier text,
   payment text,
   order_type text default 'Walk-in',
+  phone text default '',
   cash numeric,
   subtotal numeric,
   discount_pct numeric,
@@ -141,8 +142,9 @@ create table if not exists sales_agb (
   grand numeric
 );
 
--- Additive: older databases created before order_type existed won't have it.
+-- Additive: older databases created before these existed won't have them.
 alter table sales_agb add column if not exists order_type text default 'Walk-in';
+alter table sales_agb add column if not exists phone text default '';
 
 create table if not exists sale_lines_agb (
   sale_id text,
@@ -501,9 +503,9 @@ begin
     truncate item_sales_totals_agb;
     update sales_overall_totals_agb set count = 0, revenue = 0 where key = 'all';
 
-    insert into sales_agb (id, receipt_no, date, customer, cashier, payment, order_type, cash, subtotal, discount_pct, discount_amt, tax_pct, tax_amt, grand)
+    insert into sales_agb (id, receipt_no, date, customer, cashier, payment, order_type, phone, cash, subtotal, discount_pct, discount_amt, tax_pct, tax_amt, grand)
     select x->>'id', (x->>'receiptNo')::integer, (x->>'date')::timestamptz, x->>'customer', x->>'cashier', x->>'payment',
-           coalesce(x->>'orderType', 'Walk-in'),
+           coalesce(x->>'orderType', 'Walk-in'), coalesce(x->>'phone', ''),
            (x->>'cash')::numeric, (x->>'subtotal')::numeric, (x->>'discountPct')::numeric, (x->>'discountAmt')::numeric,
            (x->>'taxPct')::numeric, (x->>'taxAmt')::numeric, (x->>'grand')::numeric
     from jsonb_array_elements(payload->'sales') x;
@@ -851,16 +853,16 @@ security definer
 set search_path = public
 as $$
 begin
-  insert into sales_agb (id, receipt_no, date, customer, cashier, payment, order_type, cash, subtotal, discount_pct, discount_amt, tax_pct, tax_amt, grand)
+  insert into sales_agb (id, receipt_no, date, customer, cashier, payment, order_type, phone, cash, subtotal, discount_pct, discount_amt, tax_pct, tax_amt, grand)
   values (
     sale->>'id', (sale->>'receiptNo')::integer, (sale->>'date')::timestamptz, sale->>'customer', sale->>'cashier', sale->>'payment',
-    coalesce(sale->>'orderType', 'Walk-in'),
+    coalesce(sale->>'orderType', 'Walk-in'), coalesce(sale->>'phone', ''),
     (sale->>'cash')::numeric, (sale->>'subtotal')::numeric, (sale->>'discountPct')::numeric, (sale->>'discountAmt')::numeric,
     (sale->>'taxPct')::numeric, (sale->>'taxAmt')::numeric, (sale->>'grand')::numeric
   )
   on conflict (id) do update set
     receipt_no = excluded.receipt_no, date = excluded.date, customer = excluded.customer,
-    cashier = excluded.cashier, payment = excluded.payment, order_type = excluded.order_type, cash = excluded.cash,
+    cashier = excluded.cashier, payment = excluded.payment, order_type = excluded.order_type, phone = excluded.phone, cash = excluded.cash,
     subtotal = excluded.subtotal, discount_pct = excluded.discount_pct, discount_amt = excluded.discount_amt,
     tax_pct = excluded.tax_pct, tax_amt = excluded.tax_amt, grand = excluded.grand;
 
@@ -892,9 +894,9 @@ security definer
 set search_path = public
 as $$
 begin
-  insert into sales_agb (id, receipt_no, date, customer, cashier, payment, order_type, cash, subtotal, discount_pct, discount_amt, tax_pct, tax_amt, grand)
+  insert into sales_agb (id, receipt_no, date, customer, cashier, payment, order_type, phone, cash, subtotal, discount_pct, discount_amt, tax_pct, tax_amt, grand)
   select x->>'id', (x->>'receiptNo')::integer, (x->>'date')::timestamptz, x->>'customer', x->>'cashier', x->>'payment',
-         coalesce(x->>'orderType', 'Walk-in'),
+         coalesce(x->>'orderType', 'Walk-in'), coalesce(x->>'phone', ''),
          (x->>'cash')::numeric, (x->>'subtotal')::numeric, (x->>'discountPct')::numeric, (x->>'discountAmt')::numeric,
          (x->>'taxPct')::numeric, (x->>'taxAmt')::numeric, (x->>'grand')::numeric
   from jsonb_array_elements(sales) x
@@ -1005,6 +1007,7 @@ begin
     'walletSales', (select coalesce(sum(grand),0) from sales_agb where date >= v_start and date < v_end and payment = 'Mobile Wallet'),
     'creditSales', (select coalesce(sum(grand),0) from sales_agb where date >= v_start and date < v_end and payment = 'Credit (Udhaar)'),
     'deliverySales', (select coalesce(sum(grand),0) from sales_agb where date >= v_start and date < v_end and order_type = 'Delivery'),
+    'walkInSales', (select coalesce(sum(grand),0) from sales_agb where date >= v_start and date < v_end and order_type = 'Walk-in'),
     'refundsCount', (select count(*) from refunds_agb where date >= v_start and date < v_end),
     'refundsTotal', (select coalesce(sum(total),0) from refunds_agb where date >= v_start and date < v_end),
     -- Cost of what was actually SOLD today, priced at each item's current
@@ -1040,13 +1043,102 @@ begin
       select jsonb_agg(jsonb_build_object('name', name, 'stock', stock, 'lowStock', low_stock) order by stock asc)
       from items_agb where stock > 0 and stock <= low_stock
     ), '[]'::jsonb),
-    'outOfStockItems', coalesce((select jsonb_agg(name order by name) from items_agb where stock <= 0), '[]'::jsonb)
+    'outOfStockItems', coalesce((select jsonb_agg(name order by name) from items_agb where stock <= 0), '[]'::jsonb),
+    -- Every individual sale today, one row each, for the "all sales" table
+    -- in the PDF -- not aggregated by item like topItems above.
+    'salesToday', coalesce((
+      select jsonb_agg(jsonb_build_object(
+        'receiptNo', s.receipt_no,
+        'time', to_char(s.date, 'HH12:MI AM'),
+        'customer', s.customer,
+        'payment', s.payment,
+        'orderType', s.order_type,
+        'items', (
+          select string_agg(sl.qty::text || 'x ' || sl.item_name, ', ' order by sl.item_name)
+          from sale_lines_agb sl where sl.sale_id = s.id
+        ),
+        'grand', s.grand
+      ) order by s.date)
+      from sales_agb s
+      where s.date >= v_start and s.date < v_end
+    ), '[]'::jsonb),
+    -- Informational only -- purchases/expenses logged TODAY. Deliberately not
+    -- netted against revenue/costOfGoodsSold/grossProfit above: this report is
+    -- about what sold and its margin, not a full money-in-vs-money-out
+    -- statement (that's what the Financials tab is for).
+    'purchasesTotal', (select coalesce(sum(total),0) from purchases_agb where date = p_date),
+    'purchasesToday', coalesce((
+      select jsonb_agg(jsonb_build_object('itemName', item_name, 'qty', qty, 'total', total, 'supplierName', supplier_name) order by total desc)
+      from purchases_agb where date = p_date
+    ), '[]'::jsonb),
+    'expensesTotal', (select coalesce(sum(amount),0) from expenses_agb where date = p_date),
+    'expensesToday', coalesce((
+      select jsonb_agg(jsonb_build_object('category', category, 'amount', amount, 'notes', notes) order by amount desc)
+      from expenses_agb where date = p_date
+    ), '[]'::jsonb)
   ) into result;
   return result;
 end;
 $$;
 
 grant execute on function get_daily_report_agb(date) to anon;
+
+-- ============== get_winback_candidates_agb: quiet-but-not-lost customers ==============
+-- For a weekly n8n job: customers whose most recent order (identified by
+-- phone, since that's only ever collected on delivery orders) falls in a
+-- "gone quiet" window -- not so recent they're still obviously active, not
+-- so old they've probably moved on for good. Defaults to 10-30 days.
+
+create or replace function get_winback_candidates_agb(p_days_since_min integer default 10, p_days_since_max integer default 30)
+returns jsonb
+language plpgsql
+security definer
+set search_path = public
+as $$
+begin
+  return coalesce((
+    select jsonb_agg(jsonb_build_object(
+      'phone', phone,
+      'customer', customer,
+      'lastOrderDate', last_order_date,
+      'daysSince', (current_date - last_order_date)
+    ) order by last_order_date desc)
+    from (
+      select distinct on (phone) phone, customer, date::date as last_order_date
+      from sales_agb
+      where phone is not null and phone <> ''
+      order by phone, date desc
+    ) t
+    where (current_date - last_order_date) between p_days_since_min and p_days_since_max
+  ), '[]'::jsonb);
+end;
+$$;
+
+grant execute on function get_winback_candidates_agb(integer, integer) to anon;
+
+-- ============== find_customer_name_by_phone_agb: name auto-fill ==============
+-- As the cashier types a phone number in Billing, look up whether it matches
+-- a previous sale and return that customer's name so it can auto-fill.
+
+create or replace function find_customer_name_by_phone_agb(p_phone text)
+returns text
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  v_name text;
+begin
+  select customer into v_name
+  from sales_agb
+  where phone = p_phone and phone <> '' and customer <> '' and customer <> 'Walk-in customer'
+  order by date desc
+  limit 1;
+  return v_name;
+end;
+$$;
+
+grant execute on function find_customer_name_by_phone_agb(text) to anon;
 
 -- ============== per-domain instant replace functions ==============
 -- Every button that adds/edits/deletes items_agb, categories_agb, suppliers_agb,

@@ -1,0 +1,205 @@
+{
+  "name": "AL GHOUS BIRYANI - Weekly Win-Back",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "cronExpression",
+              "expression": "0 10 * * 1"
+            }
+          ]
+        }
+      },
+      "id": "c3c3c3c3-0001-4000-8000-000000000001",
+      "name": "Every Monday 10am",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [
+        0,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://ajevxwdgmpaakjkffvmf.supabase.co/rest/v1/rpc/get_winback_candidates_agb",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "apikey",
+              "value": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImFqZXZ4d2RnbXBhYWtqa2Zmdm1mIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODUwNjE5NzIsImV4cCI6MjEwMDYzNzk3Mn0.bB97bHOFgCeMUTYUraOArzvXAkFRHxiajrCg3gwCGrc"
+            },
+            {
+              "name": "Authorization",
+              "value": "Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImFqZXZ4d2RnbXBhYWtqa2Zmdm1mIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODUwNjE5NzIsImV4cCI6MjEwMDYzNzk3Mn0.bB97bHOFgCeMUTYUraOArzvXAkFRHxiajrCg3gwCGrc"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "{}",
+        "options": {}
+      },
+      "id": "c3c3c3c3-0002-4000-8000-000000000002",
+      "name": "Fetch win-back candidates",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        220,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "batchSize": 1,
+        "options": {}
+      },
+      "id": "c3c3c3c3-0003-4000-8000-000000000003",
+      "name": "Loop over candidates",
+      "type": "n8n-nodes-base.splitInBatches",
+      "typeVersion": 3,
+      "position": [
+        440,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const c = $input.first().json;\n\nconst daysSince = c.daysSince;\nconst name = c.customer && c.customer !== 'Walk-in customer' ? c.customer : 'there';\n\nconst text = `👋 *We miss you at AL GHOUS BIRYANI!*\n\nHi ${name}, it's been ${daysSince} days since your last order with us. We've still got your favorite biryani fresh and ready today 🍛\n\nMessage us anytime to order — we'd love to have you back!`;\n\nreturn [{ json: { phone: c.phone, message: text } }];\n"
+      },
+      "id": "c3c3c3c3-0004-4000-8000-000000000004",
+      "name": "Build win-back message",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        660,
+        -60
+      ]
+    },
+    {
+      "parameters": {
+        "amount": 4,
+        "unit": "seconds"
+      },
+      "id": "c3c3c3c3-0005-4000-8000-000000000005",
+      "name": "Wait between sends",
+      "type": "n8n-nodes-base.wait",
+      "typeVersion": 1.1,
+      "position": [
+        880,
+        -60
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://evolutionapi-evolution-api.lgf2ns.easypanel.host/message/sendText/A.P.I.S%20for%20Ali",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "apikey",
+              "value": "4FF5997A30BD-4D28-AC34-33B281BBEFFE"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ number: $json.phone, text: $json.message }) }}",
+        "options": {}
+      },
+      "id": "c3c3c3c3-0006-4000-8000-000000000006",
+      "name": "Send win-back DM",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1100,
+        -60
+      ]
+    }
+  ],
+  "connections": {
+    "Every Monday 10am": {
+      "main": [
+        [
+          {
+            "node": "Fetch win-back candidates",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Fetch win-back candidates": {
+      "main": [
+        [
+          {
+            "node": "Loop over candidates",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Loop over candidates": {
+      "main": [
+        [],
+        [
+          {
+            "node": "Build win-back message",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build win-back message": {
+      "main": [
+        [
+          {
+            "node": "Wait between sends",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Wait between sends": {
+      "main": [
+        [
+          {
+            "node": "Send win-back DM",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Send win-back DM": {
+      "main": [
+        [
+          {
+            "node": "Loop over candidates",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "pinData": {},
+  "meta": {
+    "instanceId": "al-ghous-biryani-winback"
+  }
+}
