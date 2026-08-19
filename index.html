@@ -3995,6 +3995,7 @@
           (o.notes ? '<br><span style="font-size:12px;color:var(--muted);">' + escapeHtml(o.notes) + '</span>' : '') +
         '</span>' +
         '<span>' +
+          '<button class="btn secondary small" onclick="POS.printDeliverySlip(\''+o.id+'\')">' + t("receipt", "Receipt") + '</button> ' +
           '<button class="btn green small" onclick="POS.confirmDelivery(\''+o.id+'\')">' + t("confirmDelivery", "Confirm & Log Sale") + '</button> ' +
           '<button class="btn danger small" onclick="POS.cancelPendingDelivery(\''+o.id+'\')">' + t("cancel", "Cancel") + '</button>' +
         '</span>' +
@@ -4069,6 +4070,11 @@
     renderPendingDeliveries();
     renderInventory();
     toast("Delivery confirmed and sale logged.");
+  }
+
+  function printDeliverySlip(id){
+    var order = state.pendingDeliveries.find(function(o){ return o.id === id; });
+    if(order) showDeliverySlip(order);
   }
 
   function cancelPendingDelivery(id){
@@ -4211,7 +4217,7 @@
     // the kitchen can start on it, and nothing hits inventory/revenue until
     // the rider is back with the money and it's confirmed from the queue.
     if(payMethod === "WhatsApp/Delivery"){
-      state.pendingDeliveries.push({
+      var deliveryOrder = {
         id: uid(),
         date: new Date().toISOString(),
         cart: state.cart.slice(),
@@ -4221,7 +4227,8 @@
         tax: document.getElementById("taxInput").value,
         notes: document.getElementById("deliveryNotes").value.trim(),
         cashier: currentCashierName()
-      });
+      };
+      state.pendingDeliveries.push(deliveryOrder);
       savePendingDeliveries();
       state.cart = [];
       document.getElementById("customerName").value = "";
@@ -4233,7 +4240,8 @@
       document.getElementById("paymentMethod").dispatchEvent(new Event("change"));
       renderCart();
       renderPendingDeliveries();
-      toast("Order queued for delivery. Confirm it once the rider returns with payment.");
+      showDeliverySlip(deliveryOrder);
+      toast("Order queued for delivery. Print/hand the slip to the rider, confirm once they're back with payment.");
       return;
     }
 
@@ -4452,6 +4460,40 @@
     document.getElementById("receiptModal").classList.remove("show");
     scanInput.focus();
   });
+
+  // Handed to the rider at dispatch — not a paid receipt (no receipt number
+  // exists yet, since the sale itself isn't logged until Confirm & Log Sale
+  // back at the till), just what to bring and how much to collect.
+  function showDeliverySlip(order){
+    var totals = computeCartTotals(order.cart, order.discount, order.tax);
+    var s = state.settings;
+    var html = "";
+    html += '<div style="text-align:center;font-weight:bold;font-size:14px;">' + escapeHtml(s.storeName || "GROCERY STORE") + '</div>';
+    html += '<div style="text-align:center;font-weight:bold;">DELIVERY ORDER SLIP</div>';
+    html += "<hr>";
+    html += '<div class="rline"><span>Customer</span><span>'+escapeHtml(order.customer || "Walk-in customer")+'</span></div>';
+    if(order.phone) html += '<div class="rline"><span>Phone</span><span>'+escapeHtml(order.phone)+'</span></div>';
+    if(order.notes) html += '<div class="rline"><span>Address/Notes</span><span>'+escapeHtml(order.notes)+'</span></div>';
+    html += '<div class="rline"><span>Time</span><span>'+new Date(order.date).toLocaleString()+'</span></div>';
+    html += "<hr>";
+    order.cart.forEach(function(line){
+      var item = state.items.find(function(it){ return it.id === line.itemId; });
+      if(!item) return;
+      html += '<div class="rline"><span>'+escapeHtml(item.name)+'</span><span></span></div>';
+      html += '<div class="rline"><span>&nbsp;&nbsp;'+line.qty+' x '+money(item.price)+'</span><span>'+money(item.price*line.qty)+'</span></div>';
+    });
+    html += "<hr>";
+    html += '<div class="rline"><span>Subtotal</span><span>'+money(totals.subtotal)+'</span></div>';
+    if(totals.discountAmt > 0) html += '<div class="rline"><span>Discount ('+totals.discountPct+'%)</span><span>-'+money(totals.discountAmt)+'</span></div>';
+    if(totals.taxAmt > 0) html += '<div class="rline"><span>Tax ('+totals.taxPct+'%)</span><span>+'+money(totals.taxAmt)+'</span></div>';
+    html += '<div class="rline" style="font-weight:bold;font-size:14px;"><span>AMOUNT DUE</span><span>'+money(totals.grand)+'</span></div>';
+    html += "<hr>";
+    html += '<div style="text-align:center;font-weight:bold;">Collect payment on delivery</div>';
+    html += '<div style="text-align:center;">Not a receipt — pay-in gets logged back at the till.</div>';
+
+    document.getElementById("receiptContent").innerHTML = html;
+    document.getElementById("receiptModal").classList.add("show");
+  }
   document.getElementById("printReceiptBtn").addEventListener("click", function(){
     var content = document.getElementById("receiptContent").innerHTML;
     var paperWidth = state.settings.receiptWidth || "80mm";
@@ -5984,6 +6026,7 @@
     deleteSale: deleteSale,
     confirmDelivery: confirmDelivery,
     cancelPendingDelivery: cancelPendingDelivery,
+    printDeliverySlip: printDeliverySlip,
     updateRefundTotal: updateRefundTotal,
     openLabelModal: openLabelModal,
     showShiftReport: showShiftReport,
