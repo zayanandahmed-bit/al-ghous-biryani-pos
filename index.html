@@ -4464,17 +4464,26 @@
   // Handed to the rider at dispatch — not a paid receipt (no receipt number
   // exists yet, since the sale itself isn't logged until Confirm & Log Sale
   // back at the till), just what to bring and how much to collect.
+  // Same layout as showReceipt() — the rider hands the customer something
+  // that looks like the receipt they'd normally get, just with no receipt
+  // number yet (the sale itself isn't logged until Confirm & Log Sale).
   function showDeliverySlip(order){
     var totals = computeCartTotals(order.cart, order.discount, order.tax);
+    var d = new Date(order.date);
     var s = state.settings;
     var html = "";
     html += '<div style="text-align:center;font-weight:bold;font-size:14px;">' + escapeHtml(s.storeName || "GROCERY STORE") + '</div>';
-    html += '<div style="text-align:center;font-weight:bold;">DELIVERY ORDER SLIP</div>';
+    if(s.address) html += '<div style="text-align:center;">' + escapeHtml(s.address) + '</div>';
+    if(s.phone) html += '<div style="text-align:center;">' + escapeHtml(s.phone) + '</div>';
+    html += '<div style="text-align:center;">POS Receipt</div>';
     html += "<hr>";
+    html += '<div class="rline"><span>Receipt #</span><span>Pending</span></div>';
+    html += '<div class="rline"><span>Date</span><span>'+d.toLocaleDateString()+'</span></div>';
+    html += '<div class="rline"><span>Time</span><span>'+d.toLocaleTimeString()+'</span></div>';
     html += '<div class="rline"><span>Customer</span><span>'+escapeHtml(order.customer || "Walk-in customer")+'</span></div>';
     if(order.phone) html += '<div class="rline"><span>Phone</span><span>'+escapeHtml(order.phone)+'</span></div>';
     if(order.notes) html += '<div class="rline"><span>Address/Notes</span><span>'+escapeHtml(order.notes)+'</span></div>';
-    html += '<div class="rline"><span>Time</span><span>'+new Date(order.date).toLocaleString()+'</span></div>';
+    if(order.cashier) html += '<div class="rline"><span>Cashier</span><span>'+escapeHtml(order.cashier)+'</span></div>';
     html += "<hr>";
     order.cart.forEach(function(line){
       var item = state.items.find(function(it){ return it.id === line.itemId; });
@@ -4486,10 +4495,11 @@
     html += '<div class="rline"><span>Subtotal</span><span>'+money(totals.subtotal)+'</span></div>';
     if(totals.discountAmt > 0) html += '<div class="rline"><span>Discount ('+totals.discountPct+'%)</span><span>-'+money(totals.discountAmt)+'</span></div>';
     if(totals.taxAmt > 0) html += '<div class="rline"><span>Tax ('+totals.taxPct+'%)</span><span>+'+money(totals.taxAmt)+'</span></div>';
-    html += '<div class="rline" style="font-weight:bold;font-size:14px;"><span>AMOUNT DUE</span><span>'+money(totals.grand)+'</span></div>';
+    html += '<div class="rline" style="font-weight:bold;font-size:14px;"><span>TOTAL</span><span>'+money(totals.grand)+'</span></div>';
     html += "<hr>";
-    html += '<div style="text-align:center;font-weight:bold;">Collect payment on delivery</div>';
-    html += '<div style="text-align:center;">Not a receipt — pay-in gets logged back at the till.</div>';
+    html += '<div class="rline"><span>Payment</span><span>Cash on Delivery</span></div>';
+    html += "<hr>";
+    html += '<div style="text-align:center;">' + escapeHtml(s.receiptFooter || "Thank you!") + '</div>';
 
     document.getElementById("receiptContent").innerHTML = html;
     document.getElementById("receiptModal").classList.add("show");
