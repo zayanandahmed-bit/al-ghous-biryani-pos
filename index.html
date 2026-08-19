@@ -1601,6 +1601,27 @@
     });
   }
 
+  // Sent to the customer once the rider is back and the delivery sale is
+  // actually logged -- confirms their payment was received, separate from
+  // the earlier "order confirmed, on its way" DM sent when it was queued.
+  function sendPaymentReceivedToCustomer(sale){
+    if(!sale.phone) return;
+    var target = normalizePakPhone(sale.phone);
+    if(!target) return;
+
+    var text = "🙏 *Payment Received* — " + (state.settings.storeName || "AL GHOUS BIRYANI") + "\n\n" +
+      "Thank you " + (sale.customer || "there") + "! We've received your payment of *" + money(sale.grand) + "* (" + sale.payment + ").\n\n" +
+      "We hope you enjoy your meal — thanks for ordering with us! 🍛";
+
+    fetch(WHATSAPP_API_URL + "/message/sendText/" + encodeURIComponent(WHATSAPP_INSTANCE), {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "apikey": WHATSAPP_API_KEY },
+      body: JSON.stringify({ number: target, text: text })
+    }).catch(function(err){
+      console.error("WhatsApp payment confirmation failed:", err);
+    });
+  }
+
   function pushRefundInstant(refund){
     pendingQueue.refunds.push(refund);
     savePendingQueue();
@@ -4236,6 +4257,7 @@
     saveSales();
     pushSaleInstant(sale);
     sendNewSaleWhatsApp(sale);
+    sendPaymentReceivedToCustomer(sale);
 
     state.pendingDeliveries = state.pendingDeliveries.filter(function(o){ return o.id !== id; });
     savePendingDeliveries();
