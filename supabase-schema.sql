@@ -1177,6 +1177,38 @@ $$;
 
 grant execute on function get_customer_details_by_phone_agb(text) to anon;
 
+-- ============== get_customer_details_by_phones_agb: bulk lookup ==============
+-- Same as above but for the nightly report's reviews digest -- one query
+-- for every reviewer that day instead of one call per review.
+
+create or replace function get_customer_details_by_phones_agb(p_phones text[])
+returns jsonb
+language plpgsql
+security definer
+set search_path = public
+as $$
+begin
+  return coalesce((
+    select jsonb_agg(jsonb_build_object(
+      'phone', s1.phone,
+      'customer', (
+        select customer from sales_agb s2
+        where s2.phone = s1.phone and s2.customer <> '' and s2.customer <> 'Walk-in customer'
+        order by date desc limit 1
+      ),
+      'address', (
+        select address from sales_agb s3
+        where s3.phone = s1.phone and s3.address <> ''
+        order by date desc limit 1
+      )
+    ))
+    from (select distinct phone from sales_agb where phone = any(p_phones)) s1
+  ), '[]'::jsonb);
+end;
+$$;
+
+grant execute on function get_customer_details_by_phones_agb(text[]) to anon;
+
 -- ============== per-domain instant replace functions ==============
 -- Every button that adds/edits/deletes items_agb, categories_agb, suppliers_agb,
 -- purchases_agb, cashiers_agb, held sales_agb, shifts_agb, or settings_agb calls one of these
