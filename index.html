@@ -1583,7 +1583,7 @@
     var totals = computeCartTotals(order.cart, order.discount, order.tax);
     var itemLines = order.cart.map(function(line){
       var item = state.items.find(function(it){ return it.id === line.itemId; });
-      return item ? ("• " + line.qty + " x " + item.name) : "";
+      return item ? ("• " + line.qty + "x " + item.name + " (" + money(item.price) + " per piece) — " + money(item.price*line.qty)) : "";
     }).filter(Boolean).join("\n");
 
     var text = "✅ *Order Confirmed!* — " + (state.settings.storeName || "AL GHOUS BIRYANI") + "\n\n" +
