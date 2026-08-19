@@ -7,13 +7,13 @@
           "interval": [
             {
               "field": "cronExpression",
-              "expression": "0 0 * * *"
+              "expression": "58 23 * * *"
             }
           ]
         }
       },
       "id": "a1a1a1a1-0001-4000-8000-000000000001",
-      "name": "Every night at midnight",
+      "name": "Every night at 11:58 PM",
       "type": "n8n-nodes-base.scheduleTrigger",
       "typeVersion": 1.2,
       "position": [
@@ -44,7 +44,7 @@
         },
         "sendBody": true,
         "specifyBody": "json",
-        "jsonBody": "{}",
+        "jsonBody": "={{ JSON.stringify({ p_date: $now.setZone('Asia/Karachi').toFormat('yyyy-MM-dd') }) }}",
         "options": {}
       },
       "id": "a1a1a1a1-0002-4000-8000-000000000002",
@@ -238,7 +238,7 @@
     },
     {
       "parameters": {
-        "jsCode": "const raw = $input.first().json;\nconst records = (raw.messages && raw.messages.records) || [];\n\n// Same \"yesterday\" window get_daily_report_agb defaults to -- a job\n// firing at 00:00 is summarizing the day that just ended.\nconst now = new Date();\nconst dayStart = new Date(now); dayStart.setUTCHours(0,0,0,0); dayStart.setUTCDate(dayStart.getUTCDate() - 1);\nconst dayEnd = new Date(now); dayEnd.setUTCHours(0,0,0,0);\nconst startTs = Math.floor(dayStart.getTime() / 1000);\nconst endTs = Math.floor(dayEnd.getTime() / 1000);\n\nconst latestByKey = {};\nfor (const m of records) {\n  const pu = m.message && m.message.pollUpdateMessage;\n  const vote = pu && pu.vote;\n  const pollKey = pu && pu.pollCreationMessageKey;\n  if (!vote || !vote.selectedOptions || !vote.selectedOptions.length || !pollKey) continue;\n  const ts = m.messageTimestamp || 0;\n  if (ts < startTs || ts >= endTs) continue;\n  const keyObj = m.key || {};\n  const phone = (keyObj.remoteJidAlt || keyObj.remoteJid || '').split('@')[0];\n  const dedupeKey = phone + '|' + pollKey.id;\n  if (!latestByKey[dedupeKey] || ts > latestByKey[dedupeKey].ts) {\n    latestByKey[dedupeKey] = {\n      dedupeKey, ts, phone,\n      customer: (m.pushName || '').trim() || 'Unknown',\n      rating: vote.selectedOptions[0]\n    };\n  }\n}\n\nconst reviews = Object.values(latestByKey).sort((a, b) => a.ts - b.ts);\nreturn [{ json: { reviews: reviews, phones: [...new Set(reviews.map(r => r.phone))] } }];\n"
+        "jsCode": "const raw = $input.first().json;\nconst records = (raw.messages && raw.messages.records) || [];\n\n// TODAY's window, matching the same UTC day get_daily_report_agb reports on\n// (the workflow now fires at 23:58 Asia/Karachi = 18:58 UTC the same day, so\n// the whole 12pm-midnight service sits inside this window).\nconst now = new Date();\nconst dayStart = new Date(now); dayStart.setUTCHours(0,0,0,0);\nconst startTs = Math.floor(dayStart.getTime() / 1000);\nconst endTs = startTs + 86400;\n\nconst latestByKey = {};\nfor (const m of records) {\n  const pu = m.message && m.message.pollUpdateMessage;\n  const vote = pu && pu.vote;\n  const pollKey = pu && pu.pollCreationMessageKey;\n  if (!vote || !vote.selectedOptions || !vote.selectedOptions.length || !pollKey) continue;\n  const ts = m.messageTimestamp || 0;\n  if (ts < startTs || ts >= endTs) continue;\n  const keyObj = m.key || {};\n  const phone = (keyObj.remoteJidAlt || keyObj.remoteJid || '').split('@')[0];\n  const dedupeKey = phone + '|' + pollKey.id;\n  if (!latestByKey[dedupeKey] || ts > latestByKey[dedupeKey].ts) {\n    latestByKey[dedupeKey] = {\n      dedupeKey, ts, phone,\n      customer: (m.pushName || '').trim() || 'Unknown',\n      rating: vote.selectedOptions[0]\n    };\n  }\n}\n\nconst reviews = Object.values(latestByKey).sort((a, b) => a.ts - b.ts);\nreturn [{ json: { reviews: reviews, phones: [...new Set(reviews.map(r => r.phone))] } }];\n"
       },
       "id": "e5e5e5e5-0002-4000-8000-000000000002",
       "name": "Build todays reviews",
@@ -330,17 +330,6 @@
     }
   ],
   "connections": {
-    "Every night at midnight": {
-      "main": [
-        [
-          {
-            "node": "Fetch daily report from Supabase",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
     "Fetch daily report from Supabase": {
       "main": [
         [
@@ -466,10 +455,24 @@
           }
         ]
       ]
+    },
+    "Every night at 11:58 PM": {
+      "main": [
+        [
+          {
+            "node": "Fetch daily report from Supabase",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
     }
   },
   "pinData": {},
   "meta": {
     "instanceId": "al-ghous-biryani-daily-report"
+  },
+  "settings": {
+    "timezone": "Asia/Karachi"
   }
 }
