@@ -790,7 +790,8 @@ begin
     coalesce(jsonb_agg(
       jsonb_build_object(
         'id', t.id, 'receiptNo', t.receipt_no, 'date', t.date, 'customer', t.customer,
-        'cashier', t.cashier, 'payment', t.payment, 'cash', t.cash, 'subtotal', t.subtotal,
+        'cashier', t.cashier, 'payment', t.payment, 'orderType', t.order_type, 'phone', t.phone,
+        'cash', t.cash, 'subtotal', t.subtotal,
         'discountPct', t.discount_pct, 'discountAmt', t.discount_amt, 'taxPct', t.tax_pct,
         'taxAmt', t.tax_amt, 'grand', t.grand,
         'lines', coalesce(sl.lines, '[]'::jsonb)
