@@ -1559,6 +1559,48 @@
       console.error("WhatsApp sale notification failed:", err);
     });
   }
+
+  // Pakistani numbers get typed in all kinds of local formats (03xx-xxxxxxx,
+  // spaces, with/without country code) -- normalize to the digits-only
+  // <countrycode><number> form Evolution API expects for a direct DM.
+  function normalizePakPhone(phone){
+    var digits = (phone || "").replace(/\D/g, "");
+    if(!digits) return null;
+    if(digits.charAt(0) === "0") return "92" + digits.slice(1);
+    if(digits.slice(0,2) === "92") return digits;
+    if(digits.charAt(0) === "3") return "92" + digits;
+    return digits;
+  }
+
+  // Lets the customer know their order is confirmed and on its way, instead
+  // of relying on the rider's paper slip alone -- sent straight to their own
+  // number, not the internal sales/report groups.
+  function sendDeliveryConfirmationToCustomer(order){
+    if(!order.phone) return;
+    var target = normalizePakPhone(order.phone);
+    if(!target) return;
+
+    var totals = computeCartTotals(order.cart, order.discount, order.tax);
+    var itemLines = order.cart.map(function(line){
+      var item = state.items.find(function(it){ return it.id === line.itemId; });
+      return item ? ("• " + line.qty + " x " + item.name) : "";
+    }).filter(Boolean).join("\n");
+
+    var text = "✅ *Order Confirmed!* — " + (state.settings.storeName || "AL GHOUS BIRYANI") + "\n\n" +
+      "Hi " + (order.customer || "there") + ", your order is confirmed and on its way!\n\n" +
+      itemLines + "\n\n" +
+      "Total: *" + money(totals.grand) + "*\n\n" +
+      "Thank you for ordering with us! 🍛";
+
+    fetch(WHATSAPP_API_URL + "/message/sendText/" + encodeURIComponent(WHATSAPP_INSTANCE), {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "apikey": WHATSAPP_API_KEY },
+      body: JSON.stringify({ number: target, text: text })
+    }).catch(function(err){
+      console.error("WhatsApp customer confirmation failed:", err);
+    });
+  }
+
   function pushRefundInstant(refund){
     pendingQueue.refunds.push(refund);
     savePendingQueue();
@@ -4371,6 +4413,7 @@
       };
       state.pendingDeliveries.push(deliveryOrder);
       savePendingDeliveries();
+      sendDeliveryConfirmationToCustomer(deliveryOrder);
       state.cart = [];
       document.getElementById("customerName").value = "";
       document.getElementById("deliveryPhone").value = "";
