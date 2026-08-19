@@ -1543,6 +1543,7 @@
       when.toLocaleDateString() + " " + when.toLocaleTimeString() + "\n\n" +
       itemLines + "\n\n" +
       "Total: *" + money(sale.grand) + "*\n" +
+      (sale.cash != null ? "Amount Paid: " + money(sale.cash) + (sale.cash > sale.grand ? " (change: " + money(sale.cash - sale.grand) + ")" : "") + "\n" : "") +
       "Payment: " + sale.payment + "\n" +
       "Type: " + (sale.orderType || "Walk-in") + "\n" +
       "Customer: " + (sale.customer || "Walk-in customer") +
