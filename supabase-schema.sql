@@ -1084,13 +1084,14 @@ $$;
 
 grant execute on function get_daily_report_agb(date) to anon;
 
--- ============== get_winback_candidates_agb: every customer with a phone on file ==============
+-- ============== get_winback_candidates_agb: customers quiet for 3+ days ==============
 -- For a weekly n8n job: every distinct customer who's ever given a phone
--- number on an order, no matter how recently they last ordered. Params kept
--- for backward compatibility with the existing n8n workflow call, but no
--- longer filter anything.
+-- number on an order, excluding anyone who ordered within the last
+-- p_days_since_min days (default 3) so people who just ordered don't get
+-- messaged again right away. No upper bound -- everyone past that point
+-- gets messaged, no matter how long it's been.
 
-create or replace function get_winback_candidates_agb(p_days_since_min integer default 10, p_days_since_max integer default 30)
+create or replace function get_winback_candidates_agb(p_days_since_min integer default 3, p_days_since_max integer default 30)
 returns jsonb
 language plpgsql
 security definer
@@ -1110,6 +1111,7 @@ begin
       where phone is not null and phone <> ''
       order by phone, date desc
     ) t
+    where (current_date - last_order_date) > p_days_since_min
   ), '[]'::jsonb);
 end;
 $$;
