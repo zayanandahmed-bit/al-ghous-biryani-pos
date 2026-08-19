@@ -2499,7 +2499,6 @@
     resetInvForm();
     renderInventory();
     renderFinancials();
-    renderQuickPick();
   });
 
   invCancelBtn.addEventListener("click", resetInvForm);
@@ -2683,7 +2682,6 @@
     state.items = state.items.filter(function(it){ return it.id !== id; });
     saveItems();
     renderInventory();
-    renderQuickPick();
     toast("Item deleted.");
   }
 
@@ -2693,7 +2691,6 @@
     item.quickPick = !item.quickPick;
     saveItems();
     renderInventory();
-    renderQuickPick();
     toast(item.quickPick ? ('"' + item.name + '" added to Quick Pick.') : ('"' + item.name + '" removed from Quick Pick.'));
   }
 
@@ -2744,6 +2741,11 @@
   }
 
   function renderInventory(){
+    // Quick Pick in Billing reads from the same state.items -- keep it in
+    // sync with every call site that already re-renders Inventory (stock
+    // edits, purchases, deliveries, sales) instead of relying on each one
+    // to remember a separate renderQuickPick() call.
+    renderQuickPick();
     renderCategoryUI();
     var q = document.getElementById("invSearch").value.trim().toLowerCase();
     var catFilter = document.getElementById("invCatFilter").value;
