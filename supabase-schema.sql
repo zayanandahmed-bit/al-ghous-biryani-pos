@@ -922,6 +922,61 @@ begin
 end;
 $$;
 
+-- ============== get_daily_report_agb: one JSON summary of a day ==============
+-- Read-only aggregate, no writes — safe to expose to anon like every other
+-- function here. Built for an external scheduler (n8n) to call once a night
+-- and email the result; defaults to YESTERDAY since a job firing at 00:00
+-- is summarizing the day that just ended, not the day that just started.
+
+create or replace function get_daily_report_agb(p_date date default (current_date - 1))
+returns jsonb
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  result jsonb;
+  v_start timestamptz := p_date::timestamptz;
+  v_end timestamptz := (p_date + 1)::timestamptz;
+begin
+  select jsonb_build_object(
+    'date', p_date,
+    'salesCount', (select count(*) from sales_agb where date >= v_start and date < v_end),
+    'revenue', (select coalesce(sum(grand),0) from sales_agb where date >= v_start and date < v_end),
+    'cashSales', (select coalesce(sum(grand),0) from sales_agb where date >= v_start and date < v_end and payment = 'Cash'),
+    'cardSales', (select coalesce(sum(grand),0) from sales_agb where date >= v_start and date < v_end and payment = 'Card'),
+    'walletSales', (select coalesce(sum(grand),0) from sales_agb where date >= v_start and date < v_end and payment = 'Mobile Wallet'),
+    'creditSales', (select coalesce(sum(grand),0) from sales_agb where date >= v_start and date < v_end and payment = 'Credit (Udhaar)'),
+    'refundsCount', (select count(*) from refunds_agb where date >= v_start and date < v_end),
+    'refundsTotal', (select coalesce(sum(total),0) from refunds_agb where date >= v_start and date < v_end),
+    'topItems', coalesce((
+      select jsonb_agg(jsonb_build_object('name', item_name, 'qty', qty, 'revenue', revenue) order by qty desc)
+      from (
+        select sl.item_name, sum(sl.qty) as qty, sum(sl.subtotal) as revenue
+        from sale_lines_agb sl
+        join sales_agb s on s.id = sl.sale_id
+        where s.date >= v_start and s.date < v_end
+        group by sl.item_name
+        order by sum(sl.qty) desc
+        limit 10
+      ) t
+    ), '[]'::jsonb),
+    'purchasesTotal', (select coalesce(sum(total),0) from purchases_agb where date = p_date),
+    'expensesTotal', (select coalesce(sum(amount),0) from expenses_agb where date = p_date),
+    'salariesTotal', (select coalesce(sum(amount),0) from employee_payments_agb where date = p_date),
+    'creditCollected', (select coalesce(sum(amount),0) from customer_payments_agb where date = p_date),
+    'lowStockItems', coalesce((
+      select jsonb_agg(jsonb_build_object('name', name, 'stock', stock, 'lowStock', low_stock) order by stock asc)
+      from items_agb where stock > 0 and stock <= low_stock
+    ), '[]'::jsonb),
+    'outOfStockItems', coalesce((select jsonb_agg(name order by name) from items_agb where stock <= 0), '[]'::jsonb)
+  ) into result;
+  return result;
+end;
+$$;
+
+grant execute on function get_daily_report_agb(date) to anon;
+
 -- ============== per-domain instant replace functions ==============
 -- Every button that adds/edits/deletes items_agb, categories_agb, suppliers_agb,
 -- purchases_agb, cashiers_agb, held sales_agb, shifts_agb, or settings_agb calls one of these
