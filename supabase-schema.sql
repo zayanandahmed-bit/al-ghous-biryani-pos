@@ -1693,7 +1693,46 @@ create table if not exists bad_review_check_log_agb (
 );
 alter table bad_review_check_log_agb enable row level security;
 
-create or replace function check_and_alert_bad_reviews_agb()
+-- Holds at most one in-flight request at a time. Split into two separate
+-- pg_cron jobs (trigger, then process) specifically because pg_net's
+-- background worker cannot see a request until the transaction that
+-- created it commits -- trying to fire the request AND wait for its
+-- response inside the same function/transaction can never work, no matter
+-- how long you wait or how many times you retry within it.
+create table if not exists pending_bad_review_fetch_agb (
+  id int primary key default 1,
+  request_id bigint,
+  requested_at timestamptz
+);
+insert into pending_bad_review_fetch_agb (id, request_id, requested_at)
+values (1, null, null)
+on conflict (id) do nothing;
+
+create or replace function trigger_bad_review_fetch_agb()
+returns void
+language plpgsql
+security definer
+set search_path = public, extensions
+as $$
+declare
+  v_evo_url text := 'https://evolutionapi-evolution-api.lgf2ns.easypanel.host';
+  v_evo_instance text := 'A.P.I.S for Ali';
+  v_evo_key text := '4FF5997A30BD-4D28-AC34-33B281BBEFFE';
+  v_req_id bigint;
+begin
+  select net.http_post(
+    url := v_evo_url || '/chat/findMessages/' || replace(v_evo_instance, ' ', '%20'),
+    headers := jsonb_build_object('apikey', v_evo_key, 'Content-Type', 'application/json'),
+    body := jsonb_build_object('where', jsonb_build_object('messageType', 'pollUpdateMessage'), 'limit', 500)
+  ) into v_req_id;
+
+  update pending_bad_review_fetch_agb
+  set request_id = v_req_id, requested_at = now()
+  where id = 1;
+end;
+$$;
+
+create or replace function process_bad_review_fetch_agb()
 returns void
 language plpgsql
 security definer
@@ -1705,6 +1744,7 @@ declare
   v_evo_key text := '4FF5997A30BD-4D28-AC34-33B281BBEFFE';
   v_group_jid text := '120363409413634535@g.us'; -- AGB Bad Reviews group
   v_req_id bigint;
+  v_requested_at timestamptz;
   v_status int;
   v_body jsonb;
   v_records jsonb;
@@ -1717,32 +1757,36 @@ declare
   v_address text;
   v_send_req bigint;
   v_text text;
-  v_attempt int;
   v_bad_found int := 0;
 begin
-  -- 1. fetch every poll-vote message from Evolution API
-  select net.http_post(
-    url := v_evo_url || '/chat/findMessages/' || replace(v_evo_instance, ' ', '%20'),
-    headers := jsonb_build_object('apikey', v_evo_key, 'Content-Type', 'application/json'),
-    body := jsonb_build_object('where', jsonb_build_object('messageType', 'pollUpdateMessage'), 'limit', 500)
-  ) into v_req_id;
+  select request_id, requested_at into v_req_id, v_requested_at
+  from pending_bad_review_fetch_agb where id = 1;
 
-  -- pg_net is async -- poll for the response instead of a single flat
-  -- sleep, since a background cron worker can be slower to see it land
-  -- than an interactive session is.
-  v_attempt := 0;
-  loop
-    perform pg_sleep(1);
-    v_attempt := v_attempt + 1;
-    select status_code, content::jsonb into v_status, v_body
-    from net._http_response
-    where id = v_req_id;
-    exit when v_status is not null or v_attempt >= 8;
-  end loop;
+  if v_req_id is null then
+    return; -- nothing in flight, nothing to do
+  end if;
+
+  select status_code, content::jsonb into v_status, v_body
+  from net._http_response
+  where id = v_req_id;
+
+  if v_status is null then
+    -- not ready yet -- give the next run(s) a chance, but don't wait
+    -- forever on one request if something's genuinely stuck.
+    if v_requested_at < now() - interval '3 minutes' then
+      insert into bad_review_check_log_agb (fetch_status, records_seen, bad_found, note)
+      values (null, null, 0, 'gave up waiting for request ' || v_req_id);
+      update pending_bad_review_fetch_agb set request_id = null, requested_at = null where id = 1;
+    end if;
+    return;
+  end if;
+
+  -- got a response either way -- clear the slot so the next trigger can use it
+  update pending_bad_review_fetch_agb set request_id = null, requested_at = null where id = 1;
 
   if v_status is distinct from 200 or v_body is null then
     insert into bad_review_check_log_agb (fetch_status, records_seen, bad_found, note)
-    values (v_status, null, 0, 'fetch failed or timed out after ' || v_attempt || ' attempts');
+    values (v_status, null, 0, 'fetch returned non-200 or empty body');
     return;
   end if;
 
@@ -1753,7 +1797,6 @@ begin
     return;
   end if;
 
-  -- 2. walk every vote, alert on any 1- or 2-star we have not already seen
   for m in select * from jsonb_array_elements(v_records)
   loop
     v_rating := m #>> '{message,pollUpdateMessage,vote,selectedOptions,0}';
@@ -1771,7 +1814,6 @@ begin
 
     v_bad_found := v_bad_found + 1;
 
-    -- already alerted on this exact message -- skip
     if exists (select 1 from alerted_bad_reviews_agb where message_id = v_msg_id) then
       continue;
     end if;
@@ -1780,7 +1822,6 @@ begin
     v_phone := split_part(coalesce(v_phone, ''), '@', 1);
     v_customer := coalesce(m ->> 'pushName', 'Unknown');
 
-    -- 3. look up their real name/address the same way the other workflows do
     v_name := v_customer;
     v_address := 'N/A';
     if v_phone <> '' then
@@ -1797,7 +1838,6 @@ begin
       v_address := coalesce(v_address, 'N/A');
     end if;
 
-    -- 4. send the alert
     v_text := '🚨 *Bad Review Alert*' || chr(10) || chr(10) ||
       'A customer just rated their order ' || v_rating || '.' || chr(10) || chr(10) ||
       'Customer: ' || v_name || chr(10) ||
@@ -1811,23 +1851,30 @@ begin
       body := jsonb_build_object('number', v_group_jid, 'text', v_text)
     ) into v_send_req;
 
-    -- 5. remember it so this exact message never re-alerts
     insert into alerted_bad_reviews_agb (message_id, phone, rating)
     values (v_msg_id, v_phone, v_rating)
     on conflict (message_id) do nothing;
   end loop;
 
   insert into bad_review_check_log_agb (fetch_status, records_seen, bad_found, note)
-  values (v_status, jsonb_array_length(v_records), v_bad_found, 'ok, attempt=' || v_attempt);
+  values (v_status, jsonb_array_length(v_records), v_bad_found, 'ok');
 end;
 $$;
 
-grant execute on function check_and_alert_bad_reviews_agb() to anon;
+grant execute on function trigger_bad_review_fetch_agb() to anon;
+grant execute on function process_bad_review_fetch_agb() to anon;
 
--- Runs every 10 minutes -- pg_cron jobs aren't metered against any n8n-style
--- run limit, so this can check far more often than the n8n version could.
--- Re-running this select is safe: it replaces the existing schedule by name.
+-- Trigger fires every 10 minutes; process checks every minute so it picks
+-- up whatever the trigger queued as soon as pg_net actually has it ready,
+-- without ever waiting inside the same transaction that fired the request.
 select cron.unschedule('agb-bad-review-check') where exists (
   select 1 from cron.job where jobname = 'agb-bad-review-check'
 );
-select cron.schedule('agb-bad-review-check', '*/10 * * * *', $cron$select check_and_alert_bad_reviews_agb();$cron$);
+select cron.unschedule('agb-bad-review-trigger') where exists (
+  select 1 from cron.job where jobname = 'agb-bad-review-trigger'
+);
+select cron.unschedule('agb-bad-review-process') where exists (
+  select 1 from cron.job where jobname = 'agb-bad-review-process'
+);
+select cron.schedule('agb-bad-review-trigger', '*/10 * * * *', $cron$select trigger_bad_review_fetch_agb();$cron$);
+select cron.schedule('agb-bad-review-process', '* * * * *', $cron$select process_bad_review_fetch_agb();$cron$);
