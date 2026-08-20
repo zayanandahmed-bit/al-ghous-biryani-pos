@@ -1680,6 +1680,19 @@ create table if not exists alerted_bad_reviews_agb (
 );
 alter table alerted_bad_reviews_agb enable row level security;
 
+-- Every run leaves a row here -- status/record counts/what happened -- so a
+-- silent failure (e.g. pg_net's async response not landing in time) is
+-- something we can actually read back instead of guessing at blind.
+create table if not exists bad_review_check_log_agb (
+  id bigint generated always as identity primary key,
+  ran_at timestamptz default now(),
+  fetch_status int,
+  records_seen int,
+  bad_found int,
+  note text
+);
+alter table bad_review_check_log_agb enable row level security;
+
 create or replace function check_and_alert_bad_reviews_agb()
 returns void
 language plpgsql
@@ -1704,6 +1717,8 @@ declare
   v_address text;
   v_send_req bigint;
   v_text text;
+  v_attempt int;
+  v_bad_found int := 0;
 begin
   -- 1. fetch every poll-vote message from Evolution API
   select net.http_post(
@@ -1712,21 +1727,29 @@ begin
     body := jsonb_build_object('where', jsonb_build_object('messageType', 'pollUpdateMessage'), 'limit', 500)
   ) into v_req_id;
 
-  -- pg_net is async -- the background worker usually lands the response
-  -- within a second or two; this gives it room before reading it back.
-  perform pg_sleep(3);
-
-  select status_code, content::jsonb into v_status, v_body
-  from net._http_response
-  where id = v_req_id;
+  -- pg_net is async -- poll for the response instead of a single flat
+  -- sleep, since a background cron worker can be slower to see it land
+  -- than an interactive session is.
+  v_attempt := 0;
+  loop
+    perform pg_sleep(1);
+    v_attempt := v_attempt + 1;
+    select status_code, content::jsonb into v_status, v_body
+    from net._http_response
+    where id = v_req_id;
+    exit when v_status is not null or v_attempt >= 8;
+  end loop;
 
   if v_status is distinct from 200 or v_body is null then
-    raise notice 'check_and_alert_bad_reviews_agb: fetch failed, status=%', v_status;
+    insert into bad_review_check_log_agb (fetch_status, records_seen, bad_found, note)
+    values (v_status, null, 0, 'fetch failed or timed out after ' || v_attempt || ' attempts');
     return;
   end if;
 
   v_records := v_body #> '{messages,records}';
   if v_records is null then
+    insert into bad_review_check_log_agb (fetch_status, records_seen, bad_found, note)
+    values (v_status, 0, 0, 'no records array in response');
     return;
   end if;
 
@@ -1745,6 +1768,8 @@ begin
     if v_msg_id is null then
       continue;
     end if;
+
+    v_bad_found := v_bad_found + 1;
 
     -- already alerted on this exact message -- skip
     if exists (select 1 from alerted_bad_reviews_agb where message_id = v_msg_id) then
@@ -1791,6 +1816,9 @@ begin
     values (v_msg_id, v_phone, v_rating)
     on conflict (message_id) do nothing;
   end loop;
+
+  insert into bad_review_check_log_agb (fetch_status, records_seen, bad_found, note)
+  values (v_status, jsonb_array_length(v_records), v_bad_found, 'ok, attempt=' || v_attempt);
 end;
 $$;
 
