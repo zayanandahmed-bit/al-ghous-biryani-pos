@@ -1655,3 +1655,151 @@ insert into admin_settings_passwords (app_name, password_hash)
 select 'pos-al-ghous-biryani', extensions.crypt('changeme456', extensions.gen_salt('bf'))
 where not exists (select 1 from admin_settings_passwords where app_name = 'pos-al-ghous-biryani');
 
+
+-- ============== Bad review alert, running entirely inside Supabase ==============
+-- Same job the n8n "Bad Review Alert" workflow does, moved here to sidestep
+-- n8n's monthly run-count limit -- pg_cron fires this on a schedule, pg_net
+-- makes the HTTP calls (Evolution API + the same Supabase RPC other
+-- workflows already use), no external scheduler involved at all.
+--
+-- NOTE: pg_net and pg_cron both need to be enabled for this project --
+-- Supabase dashboard -> Database -> Extensions -> enable "pg_net" and
+-- "pg_cron" if the CREATE EXTENSION lines below error out (some Supabase
+-- plans only allow enabling them from the dashboard UI, not from SQL).
+create extension if not exists pg_net with schema extensions;
+create extension if not exists pg_cron;
+
+-- Remembers which WhatsApp messages (by their own message id) already
+-- triggered an alert, so the hourly-or-more-often check never re-alerts on
+-- the same bad review twice.
+create table if not exists alerted_bad_reviews_agb (
+  message_id text primary key,
+  phone text,
+  rating text,
+  alerted_at timestamptz default now()
+);
+alter table alerted_bad_reviews_agb enable row level security;
+
+create or replace function check_and_alert_bad_reviews_agb()
+returns void
+language plpgsql
+security definer
+set search_path = public, extensions
+as $$
+declare
+  v_evo_url text := 'https://evolutionapi-evolution-api.lgf2ns.easypanel.host';
+  v_evo_instance text := 'A.P.I.S for Ali';
+  v_evo_key text := '4FF5997A30BD-4D28-AC34-33B281BBEFFE';
+  v_group_jid text := '923333138191'; -- owner's own number
+  v_req_id bigint;
+  v_status int;
+  v_body jsonb;
+  v_records jsonb;
+  m jsonb;
+  v_msg_id text;
+  v_phone text;
+  v_rating text;
+  v_customer text;
+  v_name text;
+  v_address text;
+  v_send_req bigint;
+  v_text text;
+begin
+  -- 1. fetch every poll-vote message from Evolution API
+  select net.http_post(
+    url := v_evo_url || '/chat/findMessages/' || replace(v_evo_instance, ' ', '%20'),
+    headers := jsonb_build_object('apikey', v_evo_key, 'Content-Type', 'application/json'),
+    body := jsonb_build_object('where', jsonb_build_object('messageType', 'pollUpdateMessage'), 'limit', 500)
+  ) into v_req_id;
+
+  -- pg_net is async -- the background worker usually lands the response
+  -- within a second or two; this gives it room before reading it back.
+  perform pg_sleep(3);
+
+  select status_code, content::jsonb into v_status, v_body
+  from net._http_response
+  where id = v_req_id;
+
+  if v_status is distinct from 200 or v_body is null then
+    raise notice 'check_and_alert_bad_reviews_agb: fetch failed, status=%', v_status;
+    return;
+  end if;
+
+  v_records := v_body #> '{messages,records}';
+  if v_records is null then
+    return;
+  end if;
+
+  -- 2. walk every vote, alert on any 1- or 2-star we have not already seen
+  for m in select * from jsonb_array_elements(v_records)
+  loop
+    v_rating := m #>> '{message,pollUpdateMessage,vote,selectedOptions,0}';
+    if v_rating is null then
+      continue;
+    end if;
+    if v_rating not in ('⭐ 1 - Bad', '⭐⭐ 2 - Poor') then
+      continue;
+    end if;
+
+    v_msg_id := m #>> '{key,id}';
+    if v_msg_id is null then
+      continue;
+    end if;
+
+    -- already alerted on this exact message -- skip
+    if exists (select 1 from alerted_bad_reviews_agb where message_id = v_msg_id) then
+      continue;
+    end if;
+
+    v_phone := coalesce(m #>> '{key,remoteJidAlt}', m #>> '{key,remoteJid}');
+    v_phone := split_part(coalesce(v_phone, ''), '@', 1);
+    v_customer := coalesce(m ->> 'pushName', 'Unknown');
+
+    -- 3. look up their real name/address the same way the other workflows do
+    v_name := v_customer;
+    v_address := 'N/A';
+    if v_phone <> '' then
+      select customer into v_name
+      from sales_agb
+      where phone = v_phone and phone <> '' and customer <> '' and customer <> 'Walk-in customer'
+      order by date desc limit 1;
+      v_name := coalesce(v_name, v_customer);
+
+      select address into v_address
+      from sales_agb
+      where phone = v_phone and phone <> '' and address <> ''
+      order by date desc limit 1;
+      v_address := coalesce(v_address, 'N/A');
+    end if;
+
+    -- 4. send the alert
+    v_text := '🚨 *Bad Review Alert*' || chr(10) || chr(10) ||
+      'A customer just rated their order ' || v_rating || '.' || chr(10) || chr(10) ||
+      'Customer: ' || v_name || chr(10) ||
+      'Phone: ' || v_phone || chr(10) ||
+      'Address: ' || v_address || chr(10) || chr(10) ||
+      'Consider calling them back today.';
+
+    select net.http_post(
+      url := v_evo_url || '/message/sendText/' || replace(v_evo_instance, ' ', '%20'),
+      headers := jsonb_build_object('apikey', v_evo_key, 'Content-Type', 'application/json'),
+      body := jsonb_build_object('number', v_group_jid, 'text', v_text)
+    ) into v_send_req;
+
+    -- 5. remember it so this exact message never re-alerts
+    insert into alerted_bad_reviews_agb (message_id, phone, rating)
+    values (v_msg_id, v_phone, v_rating)
+    on conflict (message_id) do nothing;
+  end loop;
+end;
+$$;
+
+grant execute on function check_and_alert_bad_reviews_agb() to anon;
+
+-- Runs every 10 minutes -- pg_cron jobs aren't metered against any n8n-style
+-- run limit, so this can check far more often than the n8n version could.
+-- Re-running this select is safe: it replaces the existing schedule by name.
+select cron.unschedule('agb-bad-review-check') where exists (
+  select 1 from cron.job where jobname = 'agb-bad-review-check'
+);
+select cron.schedule('agb-bad-review-check', '*/10 * * * *', $cron$select check_and_alert_bad_reviews_agb();$cron$);
