@@ -1690,7 +1690,7 @@ declare
   v_evo_url text := 'https://evolutionapi-evolution-api.lgf2ns.easypanel.host';
   v_evo_instance text := 'A.P.I.S for Ali';
   v_evo_key text := '4FF5997A30BD-4D28-AC34-33B281BBEFFE';
-  v_group_jid text := '923333138191'; -- owner's own number
+  v_group_jid text := '120363409413634535@g.us'; -- AGB Bad Reviews group
   v_req_id bigint;
   v_status int;
   v_body jsonb;
