@@ -1695,7 +1695,7 @@
         number: target,
         name: "How was your order today?",
         selectableCount: 1,
-        values: ["⭐⭐⭐⭐⭐ Excellent", "⭐⭐⭐ Okay", "⭐ Not Great"]
+        values: ["⭐⭐⭐⭐⭐ 5 - Excellent", "⭐⭐⭐⭐ 4 - Good", "⭐⭐⭐ 3 - Okay", "⭐⭐ 2 - Poor", "⭐ 1 - Bad"]
       })
     }).catch(function(err){
       console.error("WhatsApp rating request failed:", err);
@@ -1707,7 +1707,7 @@
   // it already decrypts them server-side, no webhook/database needed.
   // Rebuilt fresh every time the tab opens (or Refresh is clicked); nothing
   // here is persisted locally, so it always reflects the real WhatsApp state.
-  var RATING_VALUES = { "⭐⭐⭐⭐⭐ Excellent": 5, "⭐⭐⭐ Okay": 3, "⭐ Not Great": 1 };
+  var RATING_VALUES = { "⭐⭐⭐⭐⭐ 5 - Excellent": 5, "⭐⭐⭐⭐ 4 - Good": 4, "⭐⭐⭐ 3 - Okay": 3, "⭐⭐ 2 - Poor": 2, "⭐ 1 - Bad": 1 };
 
   function renderReviews(){
     var body = document.getElementById("reviewsBody");
