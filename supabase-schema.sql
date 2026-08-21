@@ -1704,6 +1704,8 @@ create table if not exists pending_bad_review_fetch_agb (
   request_id bigint,
   requested_at timestamptz
 );
+alter table pending_bad_review_fetch_agb enable row level security;
+
 insert into pending_bad_review_fetch_agb (id, request_id, requested_at)
 values (1, null, null)
 on conflict (id) do nothing;
